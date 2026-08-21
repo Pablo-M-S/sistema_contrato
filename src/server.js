@@ -15,6 +15,16 @@ app.use(express.json());
 // CORS - não é necessário adicionar o middleware cors() só por causa disso.
 app.use('/painel', express.static(path.join(__dirname, 'painel')));
 
+// Formulário público do comprador (link enviado pelo corretor, sem login).
+// express.static tenta servir um arquivo real primeiro (css/estilo.css,
+// js/preencher.js, img/logo...); se não encontrar (é um token, não um
+// arquivo), cai no app.get abaixo, que sempre devolve o index.html - o token
+// em si é lido no navegador via JS, não no Express.
+app.use('/preencher', express.static(path.join(__dirname, 'publico')));
+app.get('/preencher/:token', (req, res) => {
+    res.sendFile(path.join(__dirname, 'publico', 'index.html'));
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/contratos', contratosRoutes);
 app.use('/api/publico/contratos', publicoRoutes); // sem autenticação - link do cliente
