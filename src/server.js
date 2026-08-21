@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 
 const authRoutes = require('./routes/auth');
 const contratosRoutes = require('./routes/contratos');
@@ -7,6 +8,12 @@ const publicoRoutes = require('./routes/publico');
 
 const app = express();
 app.use(express.json());
+
+// Painel do corretor (login.html, index.html, css/, js/, img/) - servido
+// pelo próprio backend, igual o admin do Santa Terra Vitta. Como o painel é
+// carregado do mesmo domínio do backend, as chamadas de API não passam por
+// CORS - não é necessário adicionar o middleware cors() só por causa disso.
+app.use('/painel', express.static(path.join(__dirname, 'painel')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/contratos', contratosRoutes);
