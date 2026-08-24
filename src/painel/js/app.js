@@ -36,6 +36,20 @@ const LABELS_STATUS = {
   cancelado: 'Cancelado',
 };
 
+// Espelha CAMPOS_CONDICIONAIS_IMOVEL do backend (src/routes/contratos.js) -
+// cada campo é um toggle "tem isso? sim/não", e o valor só é obrigatório se
+// sim. Precisa ficar igual dos dois lados, senão o backend rejeita.
+const CAMPOS_CONDICIONAIS_IMOVEL = [
+  { flag: 'tem_lote', valor: 'lote', label: 'Lote', tipo: 'texto' },
+  { flag: 'tem_quadra', valor: 'quadra', label: 'Quadra', tipo: 'texto' },
+  { flag: 'tem_loteamento', valor: 'loteamento', label: 'Loteamento', tipo: 'texto' },
+  { flag: 'tem_matricula', valor: 'matricula', label: 'Matrícula', tipo: 'texto' },
+  { flag: 'tem_unidade', valor: 'unidade', label: 'Unidade', tipo: 'texto' },
+  { flag: 'tem_pavimento', valor: 'pavimento', label: 'Pavimento', tipo: 'texto' },
+  { flag: 'tem_metragem', valor: 'metragem', label: 'Metragem (m²)', tipo: 'numero' },
+  { flag: 'tem_prazo_obra', valor: 'prazo_obra', label: 'Prazo de obra', tipo: 'texto', placeholder: 'Ex: dezembro de 2026' },
+];
+
 // ---------------------------------------------------------------
 // Roteamento simples por hash
 // ---------------------------------------------------------------
@@ -99,36 +113,57 @@ function renderListaContratos(contratos) {
       <div class="card card-contrato">
         <div class="topo">
           <div>
+            ${c.sku ? `<div class="meta">${c.sku}</div>` : ''}
             <div class="descricao">${descricao}</div>
             <div class="meta">${data}</div>
           </div>
           <span class="badge badge-${status}">${LABELS_STATUS[status] || status}</span>
         </div>
         ${valor ? `<div class="valor">${formatarMoeda(valor)}</div>` : ''}
+        ${status === 'finalizado' ? `<button class="btn btn-secondary btn-baixar-pdf" data-id="${c.id}" style="margin-top:10px;">Baixar PDF</button>` : ''}
       </div>
     `;
   }).join('');
+
+  el.querySelectorAll('.btn-baixar-pdf').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        await Api.baixarPdf(btn.dataset.id);
+      } catch (err) {
+        mostrarToast(err.message || 'Erro ao baixar PDF.', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Baixar PDF';
+      }
+    });
+  });
 }
 
 // ---------------------------------------------------------------
 // Wizard: Novo contrato
 // ---------------------------------------------------------------
-const TOTAL_ETAPAS = 4;
+const TOTAL_ETAPAS = 5;
 
 const estadoWizard = {
   etapa: 1,
   contratoId: null,
+  sku: null,
   imovel: {},
   financeiro: { tem_financiamento: false },
   vendedores: [],
+  testemunhas: [],
 };
 
 function resetarWizard() {
   estadoWizard.etapa = 1;
   estadoWizard.contratoId = null;
+  estadoWizard.sku = null;
   estadoWizard.imovel = {};
   estadoWizard.financeiro = { tem_financiamento: false };
   estadoWizard.vendedores = [];
+  estadoWizard.testemunhas = [];
 }
 
 function renderWizard() {
@@ -141,7 +176,7 @@ function renderWizard() {
         <h1 class="display" style="font-size:19px;">Novo contrato</h1>
       </div>
       <div class="wizard-progresso">
-        ${[1,2,3,4].map(n => `<div class="ponto ${n < estadoWizard.etapa ? 'concluido' : ''} ${n === estadoWizard.etapa ? 'ativo' : ''}"></div>`).join('')}
+        ${Array.from({ length: TOTAL_ETAPAS }, (_, i) => i + 1).map(n => `<div class="ponto ${n < estadoWizard.etapa ? 'concluido' : ''} ${n === estadoWizard.etapa ? 'ativo' : ''}"></div>`).join('')}
       </div>
       <div id="conteudo-etapa"></div>
     </div>
@@ -157,60 +192,40 @@ function renderWizard() {
   if (estadoWizard.etapa === 1) renderEtapaImovel();
   else if (estadoWizard.etapa === 2) renderEtapaFinanceiro();
   else if (estadoWizard.etapa === 3) renderEtapaVendedores();
+  else if (estadoWizard.etapa === 4) renderEtapaTestemunhas();
   else renderEtapaRevisao();
 }
 
 // ---- Etapa 1: Imóvel ----
+function renderCampoCondicional(campo, d) {
+  const temValor = d[campo.flag]; // true, false ou undefined (ainda não respondido)
+  return `
+    <div class="campo campo-condicional" data-campo="${campo.flag}">
+      <label>${campo.label}</label>
+      <div class="toggle-sim-nao">
+        <button type="button" class="toggle-opcao ${temValor === true ? 'ativo' : ''}" data-flag="${campo.flag}" data-valor="true">Sim</button>
+        <button type="button" class="toggle-opcao ${temValor === false ? 'ativo' : ''}" data-flag="${campo.flag}" data-valor="false">Não</button>
+      </div>
+      <div class="campo-condicional-valor ${temValor ? '' : 'oculto'}">
+        <input id="valor-${campo.valor}" inputmode="${campo.tipo === 'numero' ? 'decimal' : 'text'}"
+               placeholder="${campo.placeholder || ''}" value="${d[campo.valor] ?? ''}">
+      </div>
+    </div>
+  `;
+}
+
 function renderEtapaImovel() {
   const d = estadoWizard.imovel;
   document.getElementById('conteudo-etapa').innerHTML = `
     <h2 class="wizard-etapa-titulo display">Dados do imóvel</h2>
-    <p class="wizard-etapa-sub">Informações que vão para o contrato</p>
+    <p class="wizard-etapa-sub">Marque "Sim" só para as características que esse imóvel realmente tem</p>
 
     <div class="campo">
       <label for="c-descricao">Descrição do imóvel</label>
       <textarea id="c-descricao">${d.imovel_descricao || ''}</textarea>
     </div>
-    <div class="linha-2">
-      <div class="campo">
-        <label for="c-loteamento">Loteamento</label>
-        <input id="c-loteamento" value="${d.loteamento || ''}">
-      </div>
-      <div class="campo">
-        <label for="c-quadra">Quadra</label>
-        <input id="c-quadra" value="${d.quadra || ''}">
-      </div>
-    </div>
-    <div class="linha-2">
-      <div class="campo">
-        <label for="c-lote">Lote</label>
-        <input id="c-lote" value="${d.lote || ''}">
-      </div>
-      <div class="campo">
-        <label for="c-matricula">Matrícula</label>
-        <input id="c-matricula" value="${d.matricula || ''}">
-      </div>
-    </div>
-    <div class="linha-2">
-      <div class="campo">
-        <label for="c-unidade">Unidade</label>
-        <input id="c-unidade" value="${d.unidade || ''}">
-      </div>
-      <div class="campo">
-        <label for="c-pavimento">Pavimento</label>
-        <input id="c-pavimento" value="${d.pavimento || ''}">
-      </div>
-    </div>
-    <div class="linha-2">
-      <div class="campo">
-        <label for="c-metragem">Metragem (m²)</label>
-        <input id="c-metragem" inputmode="decimal" value="${d.metragem || ''}">
-      </div>
-      <div class="campo">
-        <label for="c-prazo-obra">Prazo da obra</label>
-        <input id="c-prazo-obra" value="${d.prazo_obra || ''}" placeholder="Ex: 24 meses">
-      </div>
-    </div>
+
+    ${CAMPOS_CONDICIONAIS_IMOVEL.map((campo) => renderCampoCondicional(campo, d)).join('')}
 
     <div class="barra-acao-fixa">
       <div class="conteudo">
@@ -219,6 +234,23 @@ function renderEtapaImovel() {
     </div>
   `;
 
+  // Cada campo condicional guarda sua própria resposta (true/false) no
+  // dataset do container, pra saber o estado de todos na hora de validar.
+  document.querySelectorAll('.toggle-opcao').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const container = btn.closest('.campo-condicional');
+      const valor = btn.dataset.valor === 'true';
+      container.dataset.resposta = valor;
+      container.querySelectorAll('.toggle-opcao').forEach((b) => b.classList.remove('ativo'));
+      btn.classList.add('ativo');
+      container.querySelector('.campo-condicional-valor').classList.toggle('oculto', !valor);
+    });
+    // Estado inicial (edição / voltar de outra etapa)
+    if (btn.classList.contains('ativo')) {
+      btn.closest('.campo-condicional').dataset.resposta = btn.dataset.valor;
+    }
+  });
+
   document.getElementById('btn-continuar-1').addEventListener('click', () => {
     const descricao = document.getElementById('c-descricao').value.trim();
     if (!descricao) {
@@ -226,17 +258,32 @@ function renderEtapaImovel() {
       document.getElementById('c-descricao').focus();
       return;
     }
-    estadoWizard.imovel = {
-      imovel_descricao: descricao,
-      loteamento: document.getElementById('c-loteamento').value.trim(),
-      quadra: document.getElementById('c-quadra').value.trim(),
-      lote: document.getElementById('c-lote').value.trim(),
-      matricula: document.getElementById('c-matricula').value.trim(),
-      unidade: document.getElementById('c-unidade').value.trim(),
-      pavimento: document.getElementById('c-pavimento').value.trim(),
-      metragem: paraNumero(document.getElementById('c-metragem').value),
-      prazo_obra: document.getElementById('c-prazo-obra').value.trim(),
-    };
+
+    const dados = { imovel_descricao: descricao };
+    for (const campo of CAMPOS_CONDICIONAIS_IMOVEL) {
+      const container = document.querySelector(`.campo-condicional[data-campo="${campo.flag}"]`);
+      const resposta = container.dataset.resposta;
+      if (resposta === undefined) {
+        mostrarToast(`Informe se o imóvel tem ${campo.label.toLowerCase()} (sim/não).`, true);
+        container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      const temCampo = resposta === 'true';
+      dados[campo.flag] = temCampo;
+      if (temCampo) {
+        const valorInput = document.getElementById(`valor-${campo.valor}`).value.trim();
+        if (!valorInput) {
+          mostrarToast(`Preencha o campo "${campo.label}" (marcado como "sim").`, true);
+          document.getElementById(`valor-${campo.valor}`).focus();
+          return;
+        }
+        dados[campo.valor] = campo.tipo === 'numero' ? paraNumero(valorInput) : valorInput;
+      } else {
+        dados[campo.valor] = null;
+      }
+    }
+
+    estadoWizard.imovel = dados;
     estadoWizard.etapa = 2;
     renderWizard();
   });
@@ -336,6 +383,7 @@ function renderEtapaFinanceiro() {
         const payload = { ...estadoWizard.imovel, ...estadoWizard.financeiro };
         const resp = await Api.criarContrato(payload);
         estadoWizard.contratoId = resp.id || resp.contrato?.id;
+        estadoWizard.sku = resp.sku || resp.contrato?.sku || null;
         if (!estadoWizard.contratoId) throw new Error('O servidor não retornou o ID do contrato criado.');
       } catch (err) {
         mostrarToast(err.message || 'Erro ao criar contrato.', true);
@@ -468,6 +516,85 @@ function renderEtapaVendedores() {
   });
 }
 
+// ---- Etapa 4: Testemunhas ----
+function renderEtapaTestemunhas() {
+  document.getElementById('conteudo-etapa').innerHTML = `
+    <h2 class="wizard-etapa-titulo display">Testemunhas</h2>
+    <p class="wizard-etapa-sub">O contrato precisa de exatamente 2 testemunhas pra poder ser finalizado. Se ainda não souber quem vai assinar, dá pra voltar aqui depois.</p>
+
+    <div id="lista-testemunhas">
+      ${estadoWizard.testemunhas.map((t) => `
+        <div class="item-pessoa">
+          <div>
+            <div class="nome">${t.nome}</div>
+            <div class="doc">CPF ${t.cpf}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    ${estadoWizard.testemunhas.length < 2 ? `
+      <div class="card" style="margin-top:8px;">
+        <div class="campo">
+          <label for="t-nome">Nome completo</label>
+          <input id="t-nome">
+        </div>
+        <div class="campo">
+          <label for="t-cpf">CPF</label>
+          <input id="t-cpf" inputmode="numeric">
+        </div>
+        <button class="btn btn-secondary" id="btn-add-testemunha">+ Adicionar testemunha</button>
+      </div>
+    ` : `<p class="wizard-etapa-sub">As 2 testemunhas já foram cadastradas.</p>`}
+
+    <div class="barra-acao-fixa">
+      <div class="conteudo btn-row">
+        <button class="btn btn-secondary" id="btn-voltar-4">Voltar</button>
+        <button class="btn btn-primary" id="btn-continuar-4">Continuar</button>
+      </div>
+    </div>
+  `;
+
+  const btnAdd = document.getElementById('btn-add-testemunha');
+  if (btnAdd) {
+    btnAdd.addEventListener('click', async () => {
+      const nome = document.getElementById('t-nome').value.trim();
+      const cpf = document.getElementById('t-cpf').value.trim();
+      if (!nome || !cpf) {
+        mostrarToast('Informe nome e CPF da testemunha.', true);
+        return;
+      }
+      btnAdd.disabled = true;
+      btnAdd.innerHTML = '<span class="spinner"></span>';
+      try {
+        const criada = await Api.adicionarTestemunha(estadoWizard.contratoId, { nome, cpf });
+        estadoWizard.testemunhas.push(criada);
+        renderEtapaTestemunhas();
+      } catch (err) {
+        mostrarToast(err.message || 'Erro ao adicionar testemunha.', true);
+        btnAdd.disabled = false;
+        btnAdd.textContent = '+ Adicionar testemunha';
+      }
+    });
+  }
+
+  document.getElementById('btn-voltar-4').addEventListener('click', () => {
+    estadoWizard.etapa = 3;
+    renderWizard();
+  });
+
+  document.getElementById('btn-continuar-4').addEventListener('click', () => {
+    // Testemunhas podem ficar pendentes por enquanto (só são exigidas na
+    // hora do cliente finalizar pelo link) - por isso não bloqueia aqui,
+    // só avisa.
+    if (estadoWizard.testemunhas.length < 2) {
+      mostrarToast('Você pode gerar o link mesmo sem as testemunhas, mas o cliente só consegue finalizar depois que as 2 forem cadastradas.', false);
+    }
+    estadoWizard.etapa = 5;
+    renderWizard();
+  });
+}
+
 // ---- Etapa 4: Revisão + gerar link ----
 function renderEtapaRevisao() {
   const im = estadoWizard.imovel;
@@ -476,6 +603,8 @@ function renderEtapaRevisao() {
   document.getElementById('conteudo-etapa').innerHTML = `
     <h2 class="wizard-etapa-titulo display">Revisão</h2>
     <p class="wizard-etapa-sub">Confira antes de gerar o link para o comprador</p>
+
+    ${estadoWizard.sku ? `<div class="card"><div class="meta">Código do contrato</div><div class="descricao">${estadoWizard.sku}</div></div>` : ''}
 
     <div class="card">
       <div class="descricao" style="font-family:var(--font-display); font-weight:600; margin-bottom:8px;">${im.imovel_descricao}</div>
@@ -493,6 +622,13 @@ function renderEtapaRevisao() {
       ${estadoWizard.vendedores.map(v => `<div class="item-pessoa" style="background:transparent; border:none; padding:6px 0;"><div><div class="nome">${v.nome}</div></div></div>`).join('')}
     </div>
 
+    <div class="card">
+      <div class="meta" style="margin-bottom:10px;">Testemunhas</div>
+      ${estadoWizard.testemunhas.length > 0
+        ? estadoWizard.testemunhas.map(t => `<div class="item-pessoa" style="background:transparent; border:none; padding:6px 0;"><div><div class="nome">${t.nome}</div></div></div>`).join('')
+        : '<div class="meta">Nenhuma cadastrada ainda — o cliente não vai conseguir finalizar até isso ser preenchido.</div>'}
+    </div>
+
     <div class="barra-acao-fixa">
       <div class="conteudo btn-row">
         <button class="btn btn-secondary" id="btn-voltar-4">Voltar</button>
@@ -504,7 +640,7 @@ function renderEtapaRevisao() {
   `;
 
   document.getElementById('btn-voltar-4').addEventListener('click', () => {
-    estadoWizard.etapa = 3;
+    estadoWizard.etapa = 4;
     renderWizard();
   });
 

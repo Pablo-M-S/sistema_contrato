@@ -84,7 +84,28 @@ const Api = {
   adicionarVendedor(contratoId, dados) {
     return this.post(`/api/contratos/${contratoId}/vendedores`, dados);
   },
+  adicionarTestemunha(contratoId, dados) {
+    return this.post(`/api/contratos/${contratoId}/testemunhas`, dados);
+  },
+  removerTestemunha(contratoId, testemunhaId) {
+    return this.del(`/api/contratos/${contratoId}/testemunhas/${testemunhaId}`);
+  },
   gerarLink(contratoId) {
     return this.post(`/api/contratos/${contratoId}/gerar-link`);
+  },
+
+  // PDF vem como arquivo binário, não JSON - por isso não usa _chamar (que
+  // sempre tenta fazer JSON.parse da resposta). Abre direto numa nova aba.
+  async baixarPdf(contratoId) {
+    const resposta = await fetch(`${API_BASE}/api/contratos/${contratoId}/pdf`, {
+      headers: { Authorization: `Bearer ${this.token()}` }
+    });
+    if (!resposta.ok) {
+      const dados = await resposta.json().catch(() => null);
+      throw new Error((dados && dados.erro) || 'Erro ao gerar PDF.');
+    }
+    const blob = await resposta.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
   },
 };
