@@ -94,6 +94,14 @@ const Api = {
     return this.post(`/api/contratos/${contratoId}/gerar-link`);
   },
 
+  // ---- Corretores (admin) ----
+  listarCorretores() {
+    return this.get('/api/corretores');
+  },
+  criarCorretor(dados) {
+    return this.post('/api/corretores', dados);
+  },
+
   // PDF vem como arquivo binário, não JSON - por isso não usa _chamar (que
   // sempre tenta fazer JSON.parse da resposta). Abre direto numa nova aba.
   async baixarPdf(contratoId) {

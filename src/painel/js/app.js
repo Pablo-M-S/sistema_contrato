@@ -7,6 +7,29 @@ const corretorLogado = Api.corretor();
 document.getElementById('nome-corretor').textContent = corretorLogado?.nome || '';
 document.getElementById('btn-sair').addEventListener('click', () => Api.logout());
 
+// ---------------------------------------------------------------
+// Drawer (menu hambúrguer)
+// ---------------------------------------------------------------
+const drawer = document.getElementById('drawer');
+const drawerFundo = document.getElementById('drawer-fundo');
+document.getElementById('drawer-nome-corretor').textContent = corretorLogado?.nome || '';
+document.getElementById('drawer-email-corretor').textContent = corretorLogado?.email || '';
+if (corretorLogado?.is_admin) {
+  document.getElementById('link-cadastrar-corretor').style.display = 'block';
+}
+
+function abrirDrawer() {
+  drawer.classList.add('aberto');
+  drawerFundo.classList.add('aberto');
+}
+function fecharDrawer() {
+  drawer.classList.remove('aberto');
+  drawerFundo.classList.remove('aberto');
+}
+document.getElementById('btn-menu').addEventListener('click', abrirDrawer);
+drawerFundo.addEventListener('click', fecharDrawer);
+document.querySelectorAll('.drawer-item').forEach((item) => item.addEventListener('click', fecharDrawer));
+
 const app = document.getElementById('app');
 
 function mostrarToast(msg, erro) {
@@ -57,6 +80,12 @@ function rotear() {
   const hash = window.location.hash || '#/dashboard';
   if (hash.startsWith('#/novo')) {
     renderWizard();
+  } else if (hash.startsWith('#/perfil')) {
+    renderPerfil();
+  } else if (hash.startsWith('#/corretores/novo')) {
+    renderCadastrarCorretor();
+  } else if (hash.startsWith('#/proposta')) {
+    renderPropostaEmBreve();
   } else {
     renderDashboard();
   }
@@ -64,11 +93,137 @@ function rotear() {
 window.addEventListener('hashchange', rotear);
 
 // ---------------------------------------------------------------
-// Dashboard
+// Meu login
 // ---------------------------------------------------------------
-async function renderDashboard() {
+function renderPerfil() {
   app.innerHTML = `
     <div class="tela">
+      <h1 class="display" style="font-size:19px; margin-bottom:16px;">Meu login</h1>
+      <div class="card">
+        <div class="campo"><label>Nome</label><div class="descricao">${corretorLogado?.nome || '—'}</div></div>
+        <div class="campo"><label>Email</label><div class="descricao">${corretorLogado?.email || '—'}</div></div>
+        <div class="campo"><label>Tipo de acesso</label><div class="descricao">${corretorLogado?.is_admin ? 'Login central (admin)' : 'Corretor'}</div></div>
+      </div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------
+// Cadastrar corretor (admin)
+// ---------------------------------------------------------------
+function renderCadastrarCorretor() {
+  if (!corretorLogado?.is_admin) {
+    app.innerHTML = `<div class="tela"><div class="vazio"><div class="display">Acesso restrito</div><p>Só o login central pode cadastrar corretores.</p></div></div>`;
+    return;
+  }
+
+  app.innerHTML = `
+    <div class="tela">
+      <h1 class="display" style="font-size:19px; margin-bottom:16px;">Cadastrar corretor</h1>
+      <div class="card">
+        <div class="campo"><label for="nc-nome">Nome completo</label><input id="nc-nome"></div>
+        <div class="campo"><label for="nc-email">Email</label><input id="nc-email" type="email"></div>
+        <div class="campo"><label for="nc-senha">Senha (mín. 6 caracteres)</label><input id="nc-senha" type="password"></div>
+        <button class="btn btn-primary" id="btn-criar-corretor">Cadastrar</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btn-criar-corretor').addEventListener('click', async () => {
+    const nome = document.getElementById('nc-nome').value.trim();
+    const email = document.getElementById('nc-email').value.trim();
+    const senha = document.getElementById('nc-senha').value;
+    if (!nome || !email || !senha) {
+      mostrarToast('Preencha todos os campos.', true);
+      return;
+    }
+    const btn = document.getElementById('btn-criar-corretor');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      await Api.criarCorretor({ nome, email, senha });
+      mostrarToast('Corretor cadastrado com sucesso.');
+      document.getElementById('nc-nome').value = '';
+      document.getElementById('nc-email').value = '';
+      document.getElementById('nc-senha').value = '';
+    } catch (err) {
+      mostrarToast(err.message || 'Erro ao cadastrar corretor.', true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Cadastrar';
+    }
+  });
+}
+
+// ---------------------------------------------------------------
+// Proposta (ainda não implementada)
+// ---------------------------------------------------------------
+function renderPropostaEmBreve() {
+  app.innerHTML = `<div class="tela"><div class="vazio"><div class="display">Em breve</div><p>A geração de proposta ainda está sendo desenvolvida.</p></div></div>`;
+}
+
+// ---------------------------------------------------------------
+// Dashboard / Contratos (com filtros)
+// ---------------------------------------------------------------
+const filtrosAtuais = { nome: '', status: '', data_inicio: '', data_fim: '', financiamento: '', corretor_id: '' };
+let corretoresParaFiltro = null; // carregado só se for admin, uma vez
+
+async function renderDashboard() {
+  if (corretorLogado?.is_admin && corretoresParaFiltro === null) {
+    try { corretoresParaFiltro = await Api.listarCorretores(); } catch { corretoresParaFiltro = []; }
+  }
+
+  app.innerHTML = `
+    <div class="tela">
+      <h1 class="display" style="font-size:19px; margin-bottom:12px;">Contratos</h1>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="campo">
+          <label for="f-nome">Buscar por nome do cliente</label>
+          <input id="f-nome" placeholder="Nome do comprador ou vendedor" value="${filtrosAtuais.nome}">
+        </div>
+        <div class="linha-2">
+          <div class="campo">
+            <label for="f-status">Situação</label>
+            <select id="f-status">
+              <option value="">Todas</option>
+              <option value="rascunho" ${filtrosAtuais.status === 'rascunho' ? 'selected' : ''}>Rascunho</option>
+              <option value="aguardando_cliente" ${filtrosAtuais.status === 'aguardando_cliente' ? 'selected' : ''}>Aguardando cliente</option>
+              <option value="finalizado" ${filtrosAtuais.status === 'finalizado' ? 'selected' : ''}>Finalizado</option>
+              <option value="cancelado" ${filtrosAtuais.status === 'cancelado' ? 'selected' : ''}>Cancelado</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="f-financiamento">Financiamento</label>
+            <select id="f-financiamento">
+              <option value="">Todos</option>
+              <option value="true" ${filtrosAtuais.financiamento === 'true' ? 'selected' : ''}>Só com financiamento</option>
+              <option value="false" ${filtrosAtuais.financiamento === 'false' ? 'selected' : ''}>Só à vista</option>
+            </select>
+          </div>
+        </div>
+        <div class="linha-2">
+          <div class="campo">
+            <label for="f-data-inicio">De</label>
+            <input id="f-data-inicio" type="date" value="${filtrosAtuais.data_inicio}">
+          </div>
+          <div class="campo">
+            <label for="f-data-fim">Até</label>
+            <input id="f-data-fim" type="date" value="${filtrosAtuais.data_fim}">
+          </div>
+        </div>
+        ${corretorLogado?.is_admin ? `
+          <div class="campo">
+            <label for="f-corretor">Corretor</label>
+            <select id="f-corretor">
+              <option value="">Todos</option>
+              ${(corretoresParaFiltro || []).map((c) => `<option value="${c.id}" ${String(filtrosAtuais.corretor_id) === String(c.id) ? 'selected' : ''}>${c.nome}</option>`).join('')}
+            </select>
+          </div>
+        ` : ''}
+        <button class="btn btn-primary" id="btn-filtrar">Filtrar</button>
+      </div>
+
       <div id="lista-contratos">
         <div class="vazio"><div class="spinner" style="margin:0 auto 12px; border-top-color:var(--gold);"></div>Carregando contratos…</div>
       </div>
@@ -80,12 +235,37 @@ async function renderDashboard() {
     </div>
   `;
 
+  document.getElementById('btn-filtrar').addEventListener('click', () => {
+    filtrosAtuais.nome = document.getElementById('f-nome').value.trim();
+    filtrosAtuais.status = document.getElementById('f-status').value;
+    filtrosAtuais.financiamento = document.getElementById('f-financiamento').value;
+    filtrosAtuais.data_inicio = document.getElementById('f-data-inicio').value;
+    filtrosAtuais.data_fim = document.getElementById('f-data-fim').value;
+    if (corretorLogado?.is_admin) filtrosAtuais.corretor_id = document.getElementById('f-corretor').value;
+    carregarListaContratos();
+  });
+
+  // Buscar por nome ao apertar Enter, sem precisar clicar em Filtrar
+  document.getElementById('f-nome').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-filtrar').click();
+  });
+
+  carregarListaContratos();
+}
+
+async function carregarListaContratos() {
+  const el = document.getElementById('lista-contratos');
+  el.innerHTML = `<div class="vazio"><div class="spinner" style="margin:0 auto 12px; border-top-color:var(--gold);"></div>Carregando contratos…</div>`;
+
+  // Remove filtros vazios pra não mandar "nome=&status=" à toa na URL
+  const filtros = Object.fromEntries(Object.entries(filtrosAtuais).filter(([, v]) => v !== ''));
+
   try {
-    const resp = await Api.listarContratos();
+    const resp = await Api.listarContratos(filtros);
     const contratos = Array.isArray(resp) ? resp : (resp.contratos || resp.dados || []);
     renderListaContratos(contratos);
   } catch (err) {
-    document.getElementById('lista-contratos').innerHTML = `
+    el.innerHTML = `
       <div class="vazio">
         <div class="display">Não foi possível carregar</div>
         <p>${err.message}</p>
