@@ -17,15 +17,26 @@ CREATE TABLE IF NOT EXISTS contratos (
 
     status VARCHAR(20) DEFAULT 'rascunho' CHECK (status IN ('rascunho', 'aguardando_cliente', 'finalizado', 'cancelado')),
 
-    -- Dados do imóvel
+    -- Dados do imóvel — cada campo abaixo é condicional: tem_X (obrigatório
+    -- escolher sim/não) e, se tem_X = true, o valor correspondente é
+    -- obrigatório; se false, o valor é ignorado/irrelevante. Validação real
+    -- fica em routes/contratos.js (validarCamposImovel).
     imovel_descricao TEXT,
+    tem_lote BOOLEAN,
     lote VARCHAR(50),
+    tem_quadra BOOLEAN,
     quadra VARCHAR(50),
+    tem_loteamento BOOLEAN,
     loteamento VARCHAR(150),
+    tem_matricula BOOLEAN,
     matricula VARCHAR(100),
+    tem_unidade BOOLEAN,
     unidade VARCHAR(50),
+    tem_pavimento BOOLEAN,
     pavimento VARCHAR(50),
+    tem_metragem BOOLEAN,
     metragem NUMERIC(10,2),
+    tem_prazo_obra BOOLEAN,
     prazo_obra VARCHAR(100),
 
     -- Condições financeiras
