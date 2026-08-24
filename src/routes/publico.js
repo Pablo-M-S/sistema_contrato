@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
+const { gerarPdfContrato } = require('../services/pdfContrato');
 
 const router = express.Router();
 
@@ -93,6 +94,34 @@ router.post('/:token', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ erro: 'Erro ao finalizar contrato' });
+    }
+});
+
+// Cliente baixa o PDF final, só depois de finalizado
+router.get('/:token/pdf', async (req, res) => {
+    const { token } = req.params;
+    try {
+        const { rows: contratoRows } = await pool.query(`SELECT * FROM contratos WHERE token_link = $1`, [token]);
+        const contrato = contratoRows[0];
+        if (!contrato) return res.status(404).json({ erro: 'Link inválido' });
+        if (contrato.status !== 'finalizado') {
+            return res.status(400).json({ erro: 'Contrato ainda não foi finalizado' });
+        }
+
+        const { rows: vendedores } = await pool.query(`SELECT * FROM vendedores WHERE contrato_id = $1`, [contrato.id]);
+        const { rows: compradores } = await pool.query(`SELECT * FROM compradores WHERE contrato_id = $1`, [contrato.id]);
+        const { rows: testemunhas } = await pool.query(`SELECT * FROM testemunhas WHERE contrato_id = $1`, [contrato.id]);
+
+        const pdfBuffer = await gerarPdfContrato({
+            contrato, vendedores, comprador: compradores[0], testemunhas
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${contrato.nome_arquivo_pdf || 'contrato'}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ erro: 'Erro ao gerar PDF do contrato' });
     }
 });
 

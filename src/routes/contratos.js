@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { autenticar, somenteAdmin } = require('../middleware/auth');
+const { gerarPdfContrato } = require('../services/pdfContrato');
 
 const router = express.Router();
 
@@ -78,7 +79,16 @@ router.post('/', autenticar, async (req, res) => {
              campos.valor_financiado, campos.valor_avaliacao, campos.custo_transferencia,
              campos.comissao_imobiliaria]
         );
-        res.status(201).json(rows[0]);
+
+        // SKU gerado a partir do próprio id (só existe depois do INSERT) -
+        // formato CTR-<ano>-<id com 4 dígitos>, ex: CTR-2026-0007.
+        const ano = new Date().getFullYear();
+        const sku = `CTR-${ano}-${String(rows[0].id).padStart(4, '0')}`;
+        const { rows: comSku } = await pool.query(
+            `UPDATE contratos SET sku = $1 WHERE id = $2 RETURNING *`, [sku, rows[0].id]
+        );
+
+        res.status(201).json(comSku[0]);
     } catch (err) {
         console.error(err);
         res.status(500).json({ erro: 'Erro ao criar contrato' });
@@ -190,6 +200,36 @@ router.post('/:id/gerar-link', autenticar, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ erro: 'Erro ao gerar link' });
+    }
+});
+
+// Baixar o PDF do contrato (corretor dono ou admin)
+router.get('/:id/pdf', autenticar, async (req, res) => {
+    const { id } = req.params;
+    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
+        return res.status(404).json({ erro: 'Contrato não encontrado' });
+    }
+    try {
+        const { rows: contratoRows } = await pool.query(`SELECT * FROM contratos WHERE id = $1`, [id]);
+        const contrato = contratoRows[0];
+        const { rows: vendedores } = await pool.query(`SELECT * FROM vendedores WHERE contrato_id = $1`, [id]);
+        const { rows: compradores } = await pool.query(`SELECT * FROM compradores WHERE contrato_id = $1`, [id]);
+        const { rows: testemunhas } = await pool.query(`SELECT * FROM testemunhas WHERE contrato_id = $1`, [id]);
+
+        if (vendedores.length === 0 || compradores.length === 0) {
+            return res.status(400).json({ erro: 'Contrato ainda não tem vendedor e/ou comprador preenchidos' });
+        }
+
+        const pdfBuffer = await gerarPdfContrato({
+            contrato, vendedores, comprador: compradores[0], testemunhas
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${contrato.nome_arquivo_pdf || contrato.sku || 'contrato'}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ erro: 'Erro ao gerar PDF do contrato' });
     }
 });
 
