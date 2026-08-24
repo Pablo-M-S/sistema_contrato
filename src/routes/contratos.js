@@ -85,6 +85,20 @@ router.post('/', autenticar, async (req, res) => {
     }
 });
 
+// Confere se o contrato existe e pertence ao corretor logado (admin vê
+// qualquer um). Usado por qualquer rota que adiciona dados a um contrato já
+// criado (vendedor, testemunha) - sem isso, um corretor podia manipular
+// dados de um contrato de outro colega só adivinhando o ID.
+async function contratoPertenceAoCorretor(id, corretor) {
+    const { rows } = await pool.query(`SELECT id FROM contratos WHERE id = $1`, [id]);
+    if (!rows[0]) return false;
+    if (corretor.is_admin) return true;
+    const { rows: dono } = await pool.query(
+        `SELECT id FROM contratos WHERE id = $1 AND corretor_id = $2`, [id, corretor.id]
+    );
+    return !!dono[0];
+}
+
 // Adicionar vendedor a um contrato (pode ter mais de um)
 router.post('/:id/vendedores', autenticar, async (req, res) => {
     const { id } = req.params;
@@ -92,6 +106,9 @@ router.post('/:id/vendedores', autenticar, async (req, res) => {
 
     if (!nome || !cpf) {
         return res.status(400).json({ erro: 'Nome e CPF do vendedor são obrigatórios' });
+    }
+    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
+        return res.status(404).json({ erro: 'Contrato não encontrado' });
     }
 
     try {
@@ -104,6 +121,55 @@ router.post('/:id/vendedores', autenticar, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ erro: 'Erro ao adicionar vendedor' });
+    }
+});
+
+// Adicionar testemunha a um contrato (precisa de exatamente 2 até finalizar,
+// mas cabe ao corretor decidir quando - geralmente só se sabe quem vai
+// testemunhar na hora da assinatura, por isso essa rota fica aberta em
+// qualquer etapa antes da finalização, e não junto da criação do contrato).
+router.post('/:id/testemunhas', autenticar, async (req, res) => {
+    const { id } = req.params;
+    const { nome, cpf } = req.body;
+
+    if (!nome || !cpf) {
+        return res.status(400).json({ erro: 'Nome e CPF da testemunha são obrigatórios' });
+    }
+    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
+        return res.status(404).json({ erro: 'Contrato não encontrado' });
+    }
+
+    try {
+        const { rows: existentes } = await pool.query(
+            `SELECT id FROM testemunhas WHERE contrato_id = $1`, [id]
+        );
+        if (existentes.length >= 2) {
+            return res.status(400).json({ erro: 'Esse contrato já tem as 2 testemunhas necessárias' });
+        }
+
+        const { rows } = await pool.query(
+            `INSERT INTO testemunhas (contrato_id, nome, cpf) VALUES ($1,$2,$3) RETURNING *`,
+            [id, nome, cpf]
+        );
+        res.status(201).json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ erro: 'Erro ao adicionar testemunha' });
+    }
+});
+
+// Remover testemunha (corrigir nome errado, trocar quem vai assinar, etc.)
+router.delete('/:id/testemunhas/:testemunhaId', autenticar, async (req, res) => {
+    const { id, testemunhaId } = req.params;
+    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
+        return res.status(404).json({ erro: 'Contrato não encontrado' });
+    }
+    try {
+        await pool.query(`DELETE FROM testemunhas WHERE id = $1 AND contrato_id = $2`, [testemunhaId, id]);
+        res.status(204).send();
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ erro: 'Erro ao remover testemunha' });
     }
 });
 
