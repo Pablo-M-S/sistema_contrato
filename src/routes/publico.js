@@ -62,6 +62,13 @@ router.post('/:token', async (req, res) => {
             return res.status(410).json({ erro: 'Este contrato já foi finalizado' });
         }
 
+        const { rows: testemunhas } = await pool.query(
+            `SELECT id FROM testemunhas WHERE contrato_id = $1`, [contrato.id]
+        );
+        if (testemunhas.length < 2) {
+            return res.status(400).json({ erro: 'O corretor ainda não cadastrou as 2 testemunhas deste contrato' });
+        }
+
         await pool.query(
             `INSERT INTO compradores (contrato_id, nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, preenchido_em)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, NOW())`,
