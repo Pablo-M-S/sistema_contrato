@@ -3,7 +3,18 @@ const pool = require('../db/pool');
 
 const router = express.Router();
 
-const CAMPOS_OBRIGATORIOS_COMPRADOR = ['nome', 'rg', 'cpf', 'telefone', 'endereco'];
+const CAMPOS_TEXTO_OBRIGATORIOS_COMPRADOR = ['nome', 'rg', 'cpf', 'telefone', 'endereco'];
+
+// autoriza_imagem é boolean - precisa ser uma escolha explícita (true/false),
+// então não pode usar o mesmo teste de "falsy" dos campos de texto (senão
+// "não" (false) seria confundido com "não respondeu").
+function validarComprador(dados) {
+    const faltando = CAMPOS_TEXTO_OBRIGATORIOS_COMPRADOR.filter((campo) => !dados[campo]);
+    if (dados.autoriza_imagem === undefined || dados.autoriza_imagem === null) {
+        faltando.push('autoriza_imagem');
+    }
+    return faltando;
+}
 
 // Cliente abre o link - retorna só o necessário pra montar o formulário (nunca dados do vendedor/comissão)
 router.get('/:token', async (req, res) => {
@@ -33,7 +44,7 @@ router.post('/:token', async (req, res) => {
     const { token } = req.params;
     const dados = req.body;
 
-    const faltando = CAMPOS_OBRIGATORIOS_COMPRADOR.filter((campo) => !dados[campo]);
+    const faltando = validarComprador(dados);
     if (faltando.length > 0) {
         return res.status(400).json({ erro: 'Campos obrigatórios faltando', campos: faltando });
     }
@@ -55,7 +66,7 @@ router.post('/:token', async (req, res) => {
             `INSERT INTO compradores (contrato_id, nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, preenchido_em)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, NOW())`,
             [contrato.id, dados.nome, dados.nacionalidade, dados.profissao, dados.rg, dados.cpf,
-             dados.telefone, dados.endereco, dados.autoriza_imagem || false]
+             dados.telefone, dados.endereco, dados.autoriza_imagem]
         );
 
         // Nome do arquivo final = nome do cliente comprador (sanitizado)
