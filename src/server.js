@@ -5,6 +5,7 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const contratosRoutes = require('./routes/contratos');
 const publicoRoutes = require('./routes/publico');
+const corretoresRoutes = require('./routes/corretores');
 
 const app = express();
 app.use(express.json());
@@ -27,6 +28,7 @@ app.get('/preencher/:token', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/contratos', contratosRoutes);
+app.use('/api/corretores', corretoresRoutes);
 app.use('/api/publico/contratos', publicoRoutes); // sem autenticação - link do cliente
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
