@@ -40,13 +40,53 @@ function validarCamposImovel(campos) {
     return erros;
 }
 
+// Condições financeiras: valor_total é sempre obrigatório. Sinal segue o
+// mesmo padrão tem_X/valor do imóvel (nem todo negócio tem sinal separado).
+// Se tem_financiamento = true, os 3 campos que dependem do financiamento
+// passam a ser obrigatórios (eles só aparecem no contrato final nesse
+// caso - ver montarDescricaoImovel/gerarPdfContrato).
+function validarCamposFinanceiros(campos) {
+    const erros = [];
+    if (campos.valor_total === undefined || campos.valor_total === null || campos.valor_total === '') {
+        erros.push('Valor total do imóvel é obrigatório');
+    }
+
+    if (campos.tem_sinal === undefined || campos.tem_sinal === null) {
+        erros.push('Informe se o negócio tem sinal (sim/não)');
+    } else if (campos.tem_sinal === true && (campos.valor_sinal === undefined || campos.valor_sinal === null || campos.valor_sinal === '')) {
+        erros.push('Valor do sinal é obrigatório quando marcado como "sim"');
+    }
+
+    if (campos.tem_financiamento === true) {
+        const CAMPOS_FINANCIAMENTO = [
+            { chave: 'valor_financiado', label: 'Valor financiado' },
+            { chave: 'valor_avaliacao', label: 'Valor de avaliação' },
+            { chave: 'custo_transferencia', label: 'Custo de transferência' },
+        ];
+        for (const { chave, label } of CAMPOS_FINANCIAMENTO) {
+            if (campos[chave] === undefined || campos[chave] === null || campos[chave] === '') {
+                erros.push(`${label} é obrigatório quando o negócio envolve financiamento`);
+            }
+        }
+    }
+
+    return erros;
+}
+
 // Zera o valor de qualquer campo cuja flag tenha sido marcada como "não" -
 // evita guardar um valor preenchido que depois vira irrelevante se o
-// corretor mudar de ideia e desmarcar o campo.
+// corretor mudar de ideia e desmarcar o campo. Mesma lógica aplicada ao
+// sinal (tem_sinal) e aos campos que só existem com financiamento.
 function limparCamposIrrelevantes(campos) {
     const limpo = { ...campos };
     for (const { flag, valor } of CAMPOS_CONDICIONAIS_IMOVEL) {
         if (limpo[flag] !== true) limpo[valor] = null;
+    }
+    if (limpo.tem_sinal !== true) limpo.valor_sinal = null;
+    if (limpo.tem_financiamento !== true) {
+        limpo.valor_financiado = null;
+        limpo.valor_avaliacao = null;
+        limpo.custo_transferencia = null;
     }
     return limpo;
 }
@@ -55,9 +95,9 @@ function limparCamposIrrelevantes(campos) {
 router.post('/', autenticar, async (req, res) => {
     const corretorId = req.corretor.id;
 
-    const erros = validarCamposImovel(req.body);
+    const erros = [...validarCamposImovel(req.body), ...validarCamposFinanceiros(req.body)];
     if (erros.length > 0) {
-        return res.status(400).json({ erro: 'Campos do imóvel inválidos', detalhes: erros });
+        return res.status(400).json({ erro: 'Campos obrigatórios faltando', detalhes: erros });
     }
     const campos = limparCamposIrrelevantes(req.body); // imovel_descricao, lote, valor_total, tem_financiamento, etc.
 
@@ -66,16 +106,16 @@ router.post('/', autenticar, async (req, res) => {
             `INSERT INTO contratos (corretor_id, imovel_descricao,
                 tem_lote, lote, tem_quadra, quadra, tem_loteamento, loteamento, tem_matricula, matricula,
                 tem_unidade, unidade, tem_pavimento, pavimento, tem_metragem, metragem, tem_prazo_obra, prazo_obra,
-                valor_total, valor_sinal, tem_financiamento,
+                valor_total, tem_sinal, valor_sinal, tem_financiamento,
                 valor_financiado, valor_avaliacao, custo_transferencia, comissao_imobiliaria)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
              RETURNING *`,
             [corretorId, campos.imovel_descricao,
              campos.tem_lote, campos.lote, campos.tem_quadra, campos.quadra,
              campos.tem_loteamento, campos.loteamento, campos.tem_matricula, campos.matricula,
              campos.tem_unidade, campos.unidade, campos.tem_pavimento, campos.pavimento,
              campos.tem_metragem, campos.metragem, campos.tem_prazo_obra, campos.prazo_obra,
-             campos.valor_total, campos.valor_sinal, campos.tem_financiamento || false,
+             campos.valor_total, campos.tem_sinal, campos.valor_sinal, campos.tem_financiamento || false,
              campos.valor_financiado, campos.valor_avaliacao, campos.custo_transferencia,
              campos.comissao_imobiliaria]
         );
@@ -114,8 +154,21 @@ router.post('/:id/vendedores', autenticar, async (req, res) => {
     const { id } = req.params;
     const { nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem } = req.body;
 
-    if (!nome || !cpf) {
-        return res.status(400).json({ erro: 'Nome e CPF do vendedor são obrigatórios' });
+    // RG, CPF, telefone e endereço são dados da pessoa (não variam de
+    // contrato pra contrato como os campos do imóvel) - por isso sempre
+    // obrigatórios, no mesmo padrão já exigido do comprador no formulário
+    // público. autoriza_imagem precisa ser uma escolha explícita (true ou
+    // false) - checar !autoriza_imagem trataria "não autoriza" (false) como
+    // se estivesse faltando, por isso o teste é undefined/null.
+    const faltando = [];
+    if (!nome) faltando.push('nome');
+    if (!cpf) faltando.push('CPF');
+    if (!rg) faltando.push('RG');
+    if (!telefone) faltando.push('telefone');
+    if (!endereco) faltando.push('endereço');
+    if (autoriza_imagem === undefined || autoriza_imagem === null) faltando.push('autorização de uso de imagem (sim/não)');
+    if (faltando.length > 0) {
+        return res.status(400).json({ erro: `Campos obrigatórios do vendedor faltando: ${faltando.join(', ')}` });
     }
     if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
         return res.status(404).json({ erro: 'Contrato não encontrado' });
