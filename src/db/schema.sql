@@ -15,6 +15,12 @@ CREATE TABLE IF NOT EXISTS contratos (
     token_link UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
     corretor_id INTEGER REFERENCES corretores(id) NOT NULL,
 
+    -- Código legível do contrato (ex: CTR-2026-0007), gerado logo após o
+    -- INSERT em routes/contratos.js (depende do id, que só existe depois de
+    -- criado). Fica NULL por uma fração de segundo entre o INSERT e o UPDATE
+    -- que preenche esse campo.
+    sku VARCHAR(20) UNIQUE,
+
     status VARCHAR(20) DEFAULT 'rascunho' CHECK (status IN ('rascunho', 'aguardando_cliente', 'finalizado', 'cancelado')),
 
     -- Dados do imóvel — cada campo abaixo é condicional: tem_X (obrigatório
