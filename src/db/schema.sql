@@ -47,11 +47,20 @@ CREATE TABLE IF NOT EXISTS contratos (
 
     -- Condições financeiras
     valor_total NUMERIC(14,2),
+    -- Nem todo negócio tem sinal separado do restante do pagamento, por
+    -- isso segue o mesmo padrão tem_X/valor dos campos do imóvel, em vez de
+    -- deixar valor_sinal em branco de forma ambígua (esqueceu vs. não tem).
+    tem_sinal BOOLEAN,
     valor_sinal NUMERIC(14,2),
     tem_financiamento BOOLEAN DEFAULT FALSE,
+    -- valor_financiado, valor_avaliacao e custo_transferencia só existem se
+    -- tem_financiamento = true (obrigatórios nesse caso; validação em
+    -- routes/contratos.js).
     valor_financiado NUMERIC(14,2),
     valor_avaliacao NUMERIC(14,2),
     custo_transferencia NUMERIC(14,2),
+    -- Dado interno da imobiliária, não aparece no texto do contrato - por
+    -- isso continua opcional, sem travar o fluxo do corretor.
     comissao_imobiliaria NUMERIC(14,2),
 
     -- Nome do arquivo final (nome do cliente comprador)
@@ -73,11 +82,15 @@ CREATE TABLE IF NOT EXISTS vendedores (
     nome VARCHAR(150) NOT NULL,
     nacionalidade VARCHAR(100),
     profissao VARCHAR(100),
-    rg VARCHAR(30),
-    cpf VARCHAR(20),
-    telefone VARCHAR(30),
-    endereco TEXT,
-    autoriza_imagem BOOLEAN
+    -- RG, CPF, telefone, endereço e autorização de imagem são dados da
+    -- pessoa, não do imóvel - não variam de contrato pra contrato, então
+    -- são sempre obrigatórios (mesmo padrão exigido do comprador). Validação
+    -- reforçada em routes/contratos.js.
+    rg VARCHAR(30) NOT NULL,
+    cpf VARCHAR(20) NOT NULL,
+    telefone VARCHAR(30) NOT NULL,
+    endereco TEXT NOT NULL,
+    autoriza_imagem BOOLEAN NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS compradores (
