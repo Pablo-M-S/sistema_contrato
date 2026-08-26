@@ -239,7 +239,21 @@ router.delete('/:id/testemunhas/:testemunhaId', autenticar, async (req, res) => 
 // Gerar link público para o comprador preencher (muda status)
 router.post('/:id/gerar-link', autenticar, async (req, res) => {
     const { id } = req.params;
+    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
+        return res.status(404).json({ erro: 'Contrato não encontrado' });
+    }
     try {
+        // Mesma regra da etapa 3 do wizard, reforçada aqui pra não depender
+        // só da validação do frontend (alguém podia chamar essa rota direto).
+        const { rows: vendedores } = await pool.query(`SELECT id FROM vendedores WHERE contrato_id = $1`, [id]);
+        if (vendedores.length === 0) {
+            return res.status(400).json({ erro: 'Cadastre pelo menos um vendedor antes de gerar o link' });
+        }
+        const { rows: testemunhas } = await pool.query(`SELECT id FROM testemunhas WHERE contrato_id = $1`, [id]);
+        if (testemunhas.length < 2) {
+            return res.status(400).json({ erro: 'Cadastre as 2 testemunhas antes de gerar o link' });
+        }
+
         const { rows } = await pool.query(
             `UPDATE contratos SET status = 'aguardando_cliente'
              WHERE id = $1 AND corretor_id = $2 RETURNING token_link`,
