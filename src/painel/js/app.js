@@ -394,6 +394,26 @@ function renderCampoCondicional(campo, d) {
   `;
 }
 
+// Cada campo condicional (imóvel ou financeiro) guarda sua própria resposta
+// (true/false) no dataset do container, pra saber o estado de todos na hora
+// de validar. Reutilizada em qualquer etapa que use renderCampoCondicional.
+function wirearCamposCondicionais() {
+  document.querySelectorAll('.toggle-opcao').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const container = btn.closest('.campo-condicional');
+      const valor = btn.dataset.valor === 'true';
+      container.dataset.resposta = valor;
+      container.querySelectorAll('.toggle-opcao').forEach((b) => b.classList.remove('ativo'));
+      btn.classList.add('ativo');
+      container.querySelector('.campo-condicional-valor').classList.toggle('oculto', !valor);
+    });
+    // Estado inicial (edição / voltar de outra etapa)
+    if (btn.classList.contains('ativo')) {
+      btn.closest('.campo-condicional').dataset.resposta = btn.dataset.valor;
+    }
+  });
+}
+
 function renderEtapaImovel() {
   const d = estadoWizard.imovel;
   document.getElementById('conteudo-etapa').innerHTML = `
@@ -414,22 +434,7 @@ function renderEtapaImovel() {
     </div>
   `;
 
-  // Cada campo condicional guarda sua própria resposta (true/false) no
-  // dataset do container, pra saber o estado de todos na hora de validar.
-  document.querySelectorAll('.toggle-opcao').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const container = btn.closest('.campo-condicional');
-      const valor = btn.dataset.valor === 'true';
-      container.dataset.resposta = valor;
-      container.querySelectorAll('.toggle-opcao').forEach((b) => b.classList.remove('ativo'));
-      btn.classList.add('ativo');
-      container.querySelector('.campo-condicional-valor').classList.toggle('oculto', !valor);
-    });
-    // Estado inicial (edição / voltar de outra etapa)
-    if (btn.classList.contains('ativo')) {
-      btn.closest('.campo-condicional').dataset.resposta = btn.dataset.valor;
-    }
-  });
+  wirearCamposCondicionais();
 
   document.getElementById('btn-continuar-1').addEventListener('click', () => {
     const descricao = document.getElementById('c-descricao').value.trim();
@@ -470,22 +475,29 @@ function renderEtapaImovel() {
 }
 
 // ---- Etapa 2: Condições financeiras ----
+// Espelha validarCamposFinanceiros do backend (src/routes/contratos.js).
+// Sinal segue o mesmo padrão tem_X/valor do imóvel (nem todo negócio tem
+// sinal separado); os 3 campos abaixo só são obrigatórios quando o negócio
+// envolve financiamento, porque só nesse caso aparecem no contrato final.
+const CAMPO_SINAL = { flag: 'tem_sinal', valor: 'valor_sinal', label: 'Sinal (R$)', tipo: 'numero' };
+const CAMPOS_FINANCIAMENTO = [
+  { id: 'f-valor-financiado', campo: 'valor_financiado', label: 'Valor financiado' },
+  { id: 'f-valor-avaliacao', campo: 'valor_avaliacao', label: 'Valor de avaliação' },
+  { id: 'f-custo-transferencia', campo: 'custo_transferencia', label: 'Custo de transferência' },
+];
+
 function renderEtapaFinanceiro() {
   const f = estadoWizard.financeiro;
   document.getElementById('conteudo-etapa').innerHTML = `
     <h2 class="wizard-etapa-titulo display">Condições financeiras</h2>
     <p class="wizard-etapa-sub">Valores do negócio e comissão</p>
 
-    <div class="linha-2">
-      <div class="campo">
-        <label for="f-valor-total">Valor total (R$)</label>
-        <input id="f-valor-total" inputmode="decimal" value="${f.valor_total ?? ''}">
-      </div>
-      <div class="campo">
-        <label for="f-valor-sinal">Valor do sinal (R$)</label>
-        <input id="f-valor-sinal" inputmode="decimal" value="${f.valor_sinal ?? ''}">
-      </div>
+    <div class="campo">
+      <label for="f-valor-total">Valor total (R$)</label>
+      <input id="f-valor-total" inputmode="decimal" value="${f.valor_total ?? ''}">
     </div>
+
+    ${renderCampoCondicional(CAMPO_SINAL, f)}
 
     <div class="campo-check">
       <input type="checkbox" id="f-tem-financiamento" ${f.tem_financiamento ? 'checked' : ''}>
@@ -493,6 +505,7 @@ function renderEtapaFinanceiro() {
     </div>
 
     <div id="bloco-financiamento" class="${f.tem_financiamento ? '' : 'oculto'}">
+      <p class="wizard-etapa-sub">Obrigatórios porque o negócio envolve financiamento</p>
       <div class="linha-2">
         <div class="campo">
           <label for="f-valor-financiado">Valor financiado (R$)</label>
@@ -503,17 +516,15 @@ function renderEtapaFinanceiro() {
           <input id="f-valor-avaliacao" inputmode="decimal" value="${f.valor_avaliacao ?? ''}">
         </div>
       </div>
-    </div>
-
-    <div class="linha-2">
       <div class="campo">
         <label for="f-custo-transferencia">Custo de transferência (R$)</label>
         <input id="f-custo-transferencia" inputmode="decimal" value="${f.custo_transferencia ?? ''}">
       </div>
-      <div class="campo">
-        <label for="f-comissao">Comissão da imobiliária (R$)</label>
-        <input id="f-comissao" inputmode="decimal" value="${f.comissao_imobiliaria ?? ''}">
-      </div>
+    </div>
+
+    <div class="campo">
+      <label for="f-comissao">Comissão da imobiliária (R$) <span class="opcional">(opcional)</span></label>
+      <input id="f-comissao" inputmode="decimal" value="${f.comissao_imobiliaria ?? ''}">
     </div>
 
     <div class="barra-acao-fixa">
@@ -525,6 +536,8 @@ function renderEtapaFinanceiro() {
       </div>
     </div>
   `;
+
+  wirearCamposCondicionais();
 
   document.getElementById('f-tem-financiamento').addEventListener('change', (e) => {
     document.getElementById('bloco-financiamento').classList.toggle('oculto', !e.target.checked);
@@ -541,15 +554,46 @@ function renderEtapaFinanceiro() {
       mostrarToast('Informe o valor total do imóvel.', true);
       return;
     }
+
+    const containerSinal = document.querySelector(`.campo-condicional[data-campo="${CAMPO_SINAL.flag}"]`);
+    const respostaSinal = containerSinal.dataset.resposta;
+    if (respostaSinal === undefined) {
+      mostrarToast('Informe se o negócio tem sinal (sim/não).', true);
+      containerSinal.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    const temSinal = respostaSinal === 'true';
+    let valorSinal = null;
+    if (temSinal) {
+      const valorInput = document.getElementById('valor-valor_sinal').value.trim();
+      if (!valorInput) {
+        mostrarToast('Informe o valor do sinal (marcado como "sim").', true);
+        document.getElementById('valor-valor_sinal').focus();
+        return;
+      }
+      valorSinal = paraNumero(valorInput);
+    }
+
     const temFinanciamento = document.getElementById('f-tem-financiamento').checked;
+    if (temFinanciamento) {
+      for (const { id, label } of CAMPOS_FINANCIAMENTO) {
+        const valor = document.getElementById(id).value.trim();
+        if (!valor) {
+          mostrarToast(`Preencha "${label}" (obrigatório com financiamento).`, true);
+          document.getElementById(id).focus();
+          return;
+        }
+      }
+    }
 
     estadoWizard.financeiro = {
       valor_total: valorTotal,
-      valor_sinal: paraNumero(document.getElementById('f-valor-sinal').value),
+      tem_sinal: temSinal,
+      valor_sinal: valorSinal,
       tem_financiamento: temFinanciamento,
       valor_financiado: temFinanciamento ? paraNumero(document.getElementById('f-valor-financiado').value) : null,
       valor_avaliacao: temFinanciamento ? paraNumero(document.getElementById('f-valor-avaliacao').value) : null,
-      custo_transferencia: paraNumero(document.getElementById('f-custo-transferencia').value),
+      custo_transferencia: temFinanciamento ? paraNumero(document.getElementById('f-custo-transferencia').value) : null,
       comissao_imobiliaria: paraNumero(document.getElementById('f-comissao').value),
     };
 
@@ -628,9 +672,12 @@ function renderEtapaVendedores() {
         <label for="v-endereco">Endereço</label>
         <input id="v-endereco">
       </div>
-      <div class="campo-check">
-        <input type="checkbox" id="v-autoriza-imagem">
-        <label for="v-autoriza-imagem">Autoriza uso de imagem</label>
+      <div class="campo">
+        <label>Autoriza uso de imagem?</label>
+        <div class="toggle-sim-nao" id="v-autoriza-imagem-toggle">
+          <button type="button" class="toggle-opcao" data-valor="true">Sim</button>
+          <button type="button" class="toggle-opcao" data-valor="false">Não</button>
+        </div>
       </div>
       <button class="btn btn-secondary" id="btn-add-vendedor">+ Adicionar vendedor</button>
     </div>
@@ -643,9 +690,25 @@ function renderEtapaVendedores() {
     </div>
   `;
 
+  // Toggle sim/não de autorização de imagem - guarda a resposta no próprio
+  // container, igual ao padrão dos campos condicionais (mas aqui não há
+  // valor associado, só a escolha).
+  const toggleAutoriza = document.getElementById('v-autoriza-imagem-toggle');
+  toggleAutoriza.querySelectorAll('.toggle-opcao').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      toggleAutoriza.dataset.resposta = btn.dataset.valor;
+      toggleAutoriza.querySelectorAll('.toggle-opcao').forEach((b) => b.classList.remove('ativo'));
+      btn.classList.add('ativo');
+    });
+  });
+
   document.getElementById('btn-add-vendedor').addEventListener('click', async () => {
     const nome = document.getElementById('v-nome').value.trim();
     const cpf = document.getElementById('v-cpf').value.trim();
+    const rg = document.getElementById('v-rg').value.trim();
+    const telefone = document.getElementById('v-telefone').value.trim();
+    const endereco = document.getElementById('v-endereco').value.trim();
+
     if (!nome) {
       mostrarToast('Informe o nome do vendedor.', true);
       document.getElementById('v-nome').focus();
@@ -656,15 +719,37 @@ function renderEtapaVendedores() {
       document.getElementById('v-cpf').focus();
       return;
     }
+    if (!rg) {
+      mostrarToast('Informe o RG do vendedor.', true);
+      document.getElementById('v-rg').focus();
+      return;
+    }
+    if (!telefone) {
+      mostrarToast('Informe o telefone do vendedor.', true);
+      document.getElementById('v-telefone').focus();
+      return;
+    }
+    if (!endereco) {
+      mostrarToast('Informe o endereço do vendedor.', true);
+      document.getElementById('v-endereco').focus();
+      return;
+    }
+    const respostaAutoriza = toggleAutoriza.dataset.resposta;
+    if (respostaAutoriza === undefined) {
+      mostrarToast('Informe se o vendedor autoriza uso de imagem (sim/não).', true);
+      toggleAutoriza.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     const dados = {
       nome,
       nacionalidade: document.getElementById('v-nacionalidade').value.trim(),
       profissao: document.getElementById('v-profissao').value.trim(),
-      rg: document.getElementById('v-rg').value.trim(),
+      rg,
       cpf,
-      telefone: document.getElementById('v-telefone').value.trim(),
-      endereco: document.getElementById('v-endereco').value.trim(),
-      autoriza_imagem: document.getElementById('v-autoriza-imagem').checked,
+      telefone,
+      endereco,
+      autoriza_imagem: respostaAutoriza === 'true',
     };
 
     const btn = document.getElementById('btn-add-vendedor');
@@ -689,6 +774,10 @@ function renderEtapaVendedores() {
   document.getElementById('btn-continuar-3').addEventListener('click', () => {
     if (estadoWizard.vendedores.length === 0) {
       mostrarToast('Adicione pelo menos um vendedor antes de continuar.', true);
+      return;
+    }
+    if (estadoWizard.testemunhas.length < 2) {
+      mostrarToast('Cadastre as 2 testemunhas antes de continuar — sem elas o cliente não consegue finalizar o contrato.', true);
       return;
     }
     estadoWizard.etapa = 4;
