@@ -66,9 +66,11 @@ function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas }) {
 
         titulo('CLÁUSULA TERCEIRA – DO PREÇO:');
         p(`O preço a ser pago pelo(s) PROMITENTE(S) COMPRADOR(ES) pelo imóvel objeto da presente transação é de ${reais(contrato.valor_total)}, a serem pagos da seguinte forma:`);
-        p(`a) ${reais(contrato.valor_sinal)}, como sinal de negócio a ser pago na conta do vendedor.`);
-        if (contrato.tem_financiamento) {
-            p(`b) ${reais(contrato.valor_financiado)}, a serem pagos por meio de financiamento bancário.`);
+        {
+            const alineas = [];
+            if (contrato.tem_sinal) alineas.push(`${reais(contrato.valor_sinal)}, como sinal de negócio a ser pago na conta do vendedor.`);
+            if (contrato.tem_financiamento) alineas.push(`${reais(contrato.valor_financiado)}, a serem pagos por meio de financiamento bancário.`);
+            alineas.forEach((texto, i) => p(`${String.fromCharCode(97 + i)}) ${texto}`));
         }
 
         titulo('CLÁUSULA QUARTA – DAS OBRIGAÇÕES:');
