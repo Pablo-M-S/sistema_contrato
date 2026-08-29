@@ -86,11 +86,139 @@ function rotear() {
     renderCadastrarCorretor();
   } else if (hash.startsWith('#/proposta')) {
     renderPropostaEmBreve();
+  } else if (hash.startsWith('#/contrato/')) {
+    renderDetalheContrato(hash.replace('#/contrato/', ''));
   } else {
     renderDashboard();
   }
 }
 window.addEventListener('hashchange', rotear);
+
+// ---------------------------------------------------------------
+// Detalhe do contrato (imóvel, financeiro, vendedores, comprador,
+// testemunhas completos - não só o resumo que aparece no card da lista)
+// ---------------------------------------------------------------
+function simNaoTexto(v) {
+  return v === true ? 'Sim' : v === false ? 'Não' : '—';
+}
+
+async function renderDetalheContrato(id) {
+  app.innerHTML = `<div class="tela"><div class="vazio"><div class="spinner" style="margin:0 auto 12px; border-top-color:var(--gold);"></div>Carregando contrato…</div></div>`;
+
+  let dados;
+  try {
+    dados = await Api.buscarContrato(id);
+  } catch (err) {
+    app.innerHTML = `<div class="tela"><div class="vazio"><div class="display">Não foi possível carregar</div><p>${err.message || ''}</p></div></div>`;
+    return;
+  }
+
+  const c = dados.contrato || {};
+  const vendedores = dados.vendedores || [];
+  const comprador = dados.comprador;
+  const testemunhas = dados.testemunhas || [];
+  const status = c.status || 'rascunho';
+
+  const camposImovel = [
+    ['Loteamento', c.loteamento], ['Quadra', c.quadra], ['Lote', c.lote],
+    ['Matrícula', c.matricula], ['Unidade', c.unidade], ['Pavimento', c.pavimento],
+    ['Metragem', c.metragem ? `${c.metragem} m²` : null], ['Prazo de obra', c.prazo_obra],
+  ].filter(([, v]) => v);
+
+  app.innerHTML = `
+    <div class="tela">
+      <div class="cabecalho-tela">
+        <button class="btn btn-ghost" id="btn-voltar-detalhe" style="padding:6px 0;">← Voltar</button>
+        <span class="badge badge-${status}">${LABELS_STATUS[status] || status}</span>
+      </div>
+
+      ${c.sku ? `<div class="meta" style="margin-bottom:4px;">${c.sku}</div>` : ''}
+      <h1 class="display" style="font-size:19px; margin-bottom:16px;">${c.imovel_descricao || 'Imóvel'}</h1>
+
+      <div class="card">
+        <div class="meta" style="margin-bottom:8px;">Imóvel</div>
+        ${camposImovel.length
+          ? camposImovel.map(([label, v]) => `<div class="campo" style="margin-bottom:6px;"><label>${label}</label><div class="descricao">${v}</div></div>`).join('')
+          : '<div class="meta">Sem características adicionais informadas.</div>'}
+      </div>
+
+      <div class="card">
+        <div class="meta" style="margin-bottom:8px;">Condições financeiras</div>
+        <div class="valor" style="font-size:20px; margin-bottom:8px;">${formatarMoeda(c.valor_total)}</div>
+        <div class="meta">Sinal: ${c.tem_sinal ? formatarMoeda(c.valor_sinal) : 'Não há'}</div>
+        <div class="meta" style="margin-top:4px;">Financiamento: ${c.tem_financiamento ? 'Sim' : 'Não'}</div>
+        ${c.tem_financiamento ? `
+          <div class="meta" style="margin-top:4px;">Valor financiado: ${formatarMoeda(c.valor_financiado)}</div>
+          <div class="meta" style="margin-top:4px;">Valor de avaliação: ${formatarMoeda(c.valor_avaliacao)}</div>
+          <div class="meta" style="margin-top:4px;">Custo de transferência: ${formatarMoeda(c.custo_transferencia)}</div>
+        ` : ''}
+        ${c.comissao_imobiliaria ? `<div class="meta" style="margin-top:4px;">Comissão: ${formatarMoeda(c.comissao_imobiliaria)}</div>` : ''}
+      </div>
+
+      <div class="meta" style="margin:18px 0 8px;">Vendedor(es)</div>
+      ${vendedores.map((v) => `
+        <div class="card">
+          <div class="descricao" style="font-weight:600; margin-bottom:6px;">${v.nome}</div>
+          <div class="meta">CPF ${v.cpf || '—'} · RG ${v.rg || '—'}</div>
+          <div class="meta" style="margin-top:4px;">${v.telefone || '—'}</div>
+          <div class="meta" style="margin-top:4px;">${v.endereco || '—'}</div>
+          <div class="meta" style="margin-top:4px;">Autoriza uso de imagem: ${simNaoTexto(v.autoriza_imagem)}</div>
+        </div>
+      `).join('') || '<div class="meta">Nenhum vendedor cadastrado.</div>'}
+
+      <div class="meta" style="margin:18px 0 8px;">Comprador</div>
+      ${comprador ? `
+        <div class="card">
+          <div class="descricao" style="font-weight:600; margin-bottom:6px;">${comprador.nome}</div>
+          <div class="meta">CPF ${comprador.cpf || '—'} · RG ${comprador.rg || '—'}</div>
+          <div class="meta" style="margin-top:4px;">${comprador.telefone || '—'}</div>
+          <div class="meta" style="margin-top:4px;">${comprador.endereco || '—'}</div>
+          <div class="meta" style="margin-top:4px;">Autoriza uso de imagem: ${simNaoTexto(comprador.autoriza_imagem)}</div>
+        </div>
+      ` : '<div class="card"><div class="meta">O comprador ainda não preencheu os dados dele.</div></div>'}
+
+      <div class="meta" style="margin:18px 0 8px;">Testemunhas</div>
+      ${testemunhas.length
+        ? `<div class="card">${testemunhas.map((t) => `<div class="item-pessoa" style="background:transparent; border:none; padding:6px 0;"><div><div class="nome">${t.nome}</div><div class="doc">CPF ${t.cpf}</div></div></div>`).join('')}</div>`
+        : '<div class="card"><div class="meta">Nenhuma cadastrada.</div></div>'}
+
+      ${status === 'aguardando_cliente' && c.token_link ? `
+        <button class="btn btn-secondary" id="btn-copiar-link-detalhe" style="margin-top:8px;">Copiar link do comprador</button>
+      ` : ''}
+      ${status === 'finalizado' ? `
+        <button class="btn btn-primary" id="btn-baixar-pdf-detalhe" style="margin-top:8px;">Baixar PDF</button>
+      ` : ''}
+    </div>
+  `;
+
+  document.getElementById('btn-voltar-detalhe').addEventListener('click', () => {
+    window.location.hash = '#/dashboard';
+  });
+
+  document.getElementById('btn-copiar-link-detalhe')?.addEventListener('click', async () => {
+    const link = `${window.location.origin}/preencher/${c.token_link}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      mostrarToast('Link copiado.');
+    } catch {
+      mostrarToast('Não foi possível copiar automaticamente.', true);
+    }
+  });
+
+  document.getElementById('btn-baixar-pdf-detalhe')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      await Api.baixarPdf(id);
+    } catch (err) {
+      mostrarToast(err.message || 'Erro ao baixar PDF.', true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Baixar PDF';
+    }
+  });
+}
 
 // ---------------------------------------------------------------
 // Meu login
@@ -175,7 +303,10 @@ async function renderDashboard() {
 
   app.innerHTML = `
     <div class="tela">
-      <h1 class="display" style="font-size:19px; margin-bottom:12px;">Contratos</h1>
+      <div class="cabecalho-tela">
+        <h1 class="display" style="font-size:19px;">Contratos</h1>
+        <a href="#/novo" class="btn btn-primary btn-cabecalho">+ Novo contrato</a>
+      </div>
 
       <div class="card" style="margin-bottom:16px;">
         <div class="campo">
@@ -226,11 +357,6 @@ async function renderDashboard() {
 
       <div id="lista-contratos">
         <div class="vazio"><div class="spinner" style="margin:0 auto 12px; border-top-color:var(--gold);"></div>Carregando contratos…</div>
-      </div>
-    </div>
-    <div class="barra-acao-fixa">
-      <div class="conteudo">
-        <a href="#/novo" class="btn btn-primary">+ Novo contrato</a>
       </div>
     </div>
   `;
@@ -290,7 +416,7 @@ function renderListaContratos(contratos) {
     const valor = c.valor_total ?? c.dados_financeiros?.valor_total;
     const data = c.criado_em ? new Date(c.criado_em).toLocaleDateString('pt-BR') : '';
     return `
-      <div class="card card-contrato">
+      <div class="card card-contrato" data-id="${c.id}">
         <div class="topo">
           <div>
             ${c.sku ? `<div class="meta">${c.sku}</div>` : ''}
@@ -304,6 +430,13 @@ function renderListaContratos(contratos) {
       </div>
     `;
   }).join('');
+
+  el.querySelectorAll('.card-contrato').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-baixar-pdf')) return; // não abre detalhe ao baixar PDF
+      window.location.hash = `#/contrato/${card.dataset.id}`;
+    });
+  });
 
   el.querySelectorAll('.btn-baixar-pdf').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -633,8 +766,9 @@ function renderEtapaVendedores() {
         <div class="item-pessoa">
           <div>
             <div class="nome">${v.nome}</div>
-            <div class="doc">CPF ${v.cpf || '—'}</div>
+            <div class="doc">CPF ${v.cpf || '—'} · RG ${v.rg || '—'}</div>
           </div>
+          <button type="button" class="btn-remover-vendedor" data-index="${i}" aria-label="Remover vendedor">✕</button>
         </div>
       `).join('')}
     </div>
@@ -756,14 +890,38 @@ function renderEtapaVendedores() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>';
     try {
-      await Api.adicionarVendedor(estadoWizard.contratoId, dados);
-      estadoWizard.vendedores.push(dados);
+      const criado = await Api.adicionarVendedor(estadoWizard.contratoId, dados);
+      // Guarda o registro devolvido pelo backend (com o id) e não só os
+      // dados locais - precisa do id pra poder remover depois.
+      estadoWizard.vendedores.push(criado || dados);
       renderEtapaVendedores();
     } catch (err) {
       mostrarToast(err.message || 'Erro ao adicionar vendedor.', true);
       btn.disabled = false;
       btn.textContent = '+ Adicionar vendedor';
     }
+  });
+
+  document.querySelectorAll('.btn-remover-vendedor').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const i = Number(btn.dataset.index);
+      const vendedor = estadoWizard.vendedores[i];
+      if (!vendedor?.id) {
+        // Registro sem id (fallback improvável) - remove só localmente
+        estadoWizard.vendedores.splice(i, 1);
+        renderEtapaVendedores();
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await Api.removerVendedor(estadoWizard.contratoId, vendedor.id);
+        estadoWizard.vendedores.splice(i, 1);
+        renderEtapaVendedores();
+      } catch (err) {
+        mostrarToast(err.message || 'Erro ao remover vendedor.', true);
+        btn.disabled = false;
+      }
+    });
   });
 
   document.getElementById('btn-voltar-3').addEventListener('click', () => {
@@ -881,20 +1039,34 @@ function renderEtapaRevisao() {
     </div>
 
     <div class="card">
-      <div class="meta" style="margin-bottom:6px;">Valor total</div>
+      <div class="meta" style="margin-bottom:6px;">Condições financeiras</div>
       <div class="valor" style="font-size:20px;">${formatarMoeda(fin.valor_total)}</div>
-      ${fin.tem_financiamento ? '<div class="meta" style="margin-top:8px;">Com financiamento</div>' : ''}
+      <div class="meta" style="margin-top:8px;">${fin.tem_sinal ? `Sinal: ${formatarMoeda(fin.valor_sinal)}` : 'Sem sinal'}</div>
+      ${fin.tem_financiamento ? `
+        <div class="meta" style="margin-top:4px;">Com financiamento</div>
+        <div class="meta">Valor financiado: ${formatarMoeda(fin.valor_financiado)}</div>
+        <div class="meta">Valor de avaliação: ${formatarMoeda(fin.valor_avaliacao)}</div>
+        <div class="meta">Custo de transferência: ${formatarMoeda(fin.custo_transferencia)}</div>
+      ` : '<div class="meta" style="margin-top:4px;">Sem financiamento</div>'}
+      ${fin.comissao_imobiliaria ? `<div class="meta" style="margin-top:4px;">Comissão: ${formatarMoeda(fin.comissao_imobiliaria)}</div>` : ''}
     </div>
 
     <div class="card">
       <div class="meta" style="margin-bottom:10px;">Vendedor(es)</div>
-      ${estadoWizard.vendedores.map(v => `<div class="item-pessoa" style="background:transparent; border:none; padding:6px 0;"><div><div class="nome">${v.nome}</div></div></div>`).join('')}
+      ${estadoWizard.vendedores.map(v => `
+        <div class="item-pessoa" style="background:transparent; border:none; padding:6px 0; display:block;">
+          <div class="nome">${v.nome}</div>
+          <div class="doc">CPF ${v.cpf} · RG ${v.rg}</div>
+          <div class="doc">${v.telefone} · ${v.endereco}</div>
+          <div class="doc">${v.autoriza_imagem ? 'Autoriza' : 'Não autoriza'} uso de imagem</div>
+        </div>
+      `).join('')}
     </div>
 
     <div class="card">
       <div class="meta" style="margin-bottom:10px;">Testemunhas</div>
       ${estadoWizard.testemunhas.length > 0
-        ? estadoWizard.testemunhas.map(t => `<div class="item-pessoa" style="background:transparent; border:none; padding:6px 0;"><div><div class="nome">${t.nome}</div></div></div>`).join('')
+        ? estadoWizard.testemunhas.map(t => `<div class="item-pessoa" style="background:transparent; border:none; padding:6px 0; display:block;"><div class="nome">${t.nome}</div><div class="doc">CPF ${t.cpf}</div></div>`).join('')
         : '<div class="meta">Nenhuma cadastrada ainda — o cliente não vai conseguir finalizar até isso ser preenchido.</div>'}
     </div>
 
