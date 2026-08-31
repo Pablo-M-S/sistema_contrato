@@ -111,9 +111,10 @@ router.get('/:token/pdf', async (req, res) => {
         const { rows: vendedores } = await pool.query(`SELECT * FROM vendedores WHERE contrato_id = $1`, [contrato.id]);
         const { rows: compradores } = await pool.query(`SELECT * FROM compradores WHERE contrato_id = $1`, [contrato.id]);
         const { rows: testemunhas } = await pool.query(`SELECT * FROM testemunhas WHERE contrato_id = $1`, [contrato.id]);
+        const { rows: formasPagamento } = await pool.query(`SELECT * FROM formas_pagamento WHERE contrato_id = $1`, [contrato.id]);
 
         const pdfBuffer = await gerarPdfContrato({
-            contrato, vendedores, comprador: compradores[0], testemunhas
+            contrato, vendedores, comprador: compradores[0], testemunhas, formasPagamento
         });
 
         res.setHeader('Content-Type', 'application/pdf');

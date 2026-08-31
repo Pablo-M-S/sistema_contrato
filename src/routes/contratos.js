@@ -236,6 +236,71 @@ router.delete('/:id/testemunhas/:testemunhaId', autenticar, async (req, res) => 
     }
 });
 
+// Formas de pagamento extras (FGTS, subsídio Caixa, pagamento na assinatura
+// do banco, balão, parcelas, valor à vista, veículo ou imóvel em permuta) -
+// pedido da imobiliária pra registrar valores que não são nem o sinal nem o
+// financiamento em si, mas ainda compõem o preço total do negócio.
+const TIPOS_FORMA_PAGAMENTO_MONETARIOS = ['fgts', 'subsidio_caixa', 'assinatura_banco', 'balao', 'parcelas', 'valor_vista'];
+const TIPOS_FORMA_PAGAMENTO = [...TIPOS_FORMA_PAGAMENTO_MONETARIOS, 'veiculo', 'imovel'];
+
+router.post('/:id/formas-pagamento', autenticar, async (req, res) => {
+    const { id } = req.params;
+    const {
+        tipo, valor, descricao,
+        veiculo_modelo, veiculo_placa, veiculo_chassi, veiculo_renavam, veiculo_cor, veiculo_combustivel, veiculo_ano,
+        imovel_descricao, imovel_lote, imovel_quadra, imovel_loteamento, imovel_matricula, imovel_unidade, imovel_pavimento, imovel_metragem,
+    } = req.body;
+
+    if (!TIPOS_FORMA_PAGAMENTO.includes(tipo)) {
+        return res.status(400).json({ erro: `Tipo de forma de pagamento inválido. Use um de: ${TIPOS_FORMA_PAGAMENTO.join(', ')}` });
+    }
+    // Tipos em dinheiro exigem valor; veículo e imóvel são permuta e exigem
+    // a descrição do bem em vez de um valor em R$.
+    if (TIPOS_FORMA_PAGAMENTO_MONETARIOS.includes(tipo) && (valor === undefined || valor === null || valor === '')) {
+        return res.status(400).json({ erro: 'Informe o valor (R$) dessa forma de pagamento' });
+    }
+    if (tipo === 'veiculo' && !veiculo_modelo) {
+        return res.status(400).json({ erro: 'Informe pelo menos o modelo do veículo dado em permuta' });
+    }
+    if (tipo === 'imovel' && !imovel_descricao) {
+        return res.status(400).json({ erro: 'Informe a descrição do imóvel dado em permuta' });
+    }
+    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
+        return res.status(404).json({ erro: 'Contrato não encontrado' });
+    }
+
+    try {
+        const { rows } = await pool.query(
+            `INSERT INTO formas_pagamento (
+                contrato_id, tipo, valor, descricao,
+                veiculo_modelo, veiculo_placa, veiculo_chassi, veiculo_renavam, veiculo_cor, veiculo_combustivel, veiculo_ano,
+                imovel_descricao, imovel_lote, imovel_quadra, imovel_loteamento, imovel_matricula, imovel_unidade, imovel_pavimento, imovel_metragem
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+            [id, tipo, valor ?? null, descricao ?? null,
+             veiculo_modelo ?? null, veiculo_placa ?? null, veiculo_chassi ?? null, veiculo_renavam ?? null, veiculo_cor ?? null, veiculo_combustivel ?? null, veiculo_ano ?? null,
+             imovel_descricao ?? null, imovel_lote ?? null, imovel_quadra ?? null, imovel_loteamento ?? null, imovel_matricula ?? null, imovel_unidade ?? null, imovel_pavimento ?? null, imovel_metragem ?? null]
+        );
+        res.status(201).json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ erro: 'Erro ao adicionar forma de pagamento' });
+    }
+});
+
+router.delete('/:id/formas-pagamento/:formaId', autenticar, async (req, res) => {
+    const { id, formaId } = req.params;
+    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
+        return res.status(404).json({ erro: 'Contrato não encontrado' });
+    }
+    try {
+        await pool.query(`DELETE FROM formas_pagamento WHERE id = $1 AND contrato_id = $2`, [formaId, id]);
+        res.status(204).send();
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ erro: 'Erro ao remover forma de pagamento' });
+    }
+});
+
 // Gerar link público para o comprador preencher (muda status)
 router.post('/:id/gerar-link', autenticar, async (req, res) => {
     const { id } = req.params;
@@ -305,11 +370,13 @@ router.get('/:id', autenticar, async (req, res) => {
         const { rows: vendedores } = await pool.query(`SELECT * FROM vendedores WHERE contrato_id = $1`, [id]);
         const { rows: compradores } = await pool.query(`SELECT * FROM compradores WHERE contrato_id = $1`, [id]);
         const { rows: testemunhas } = await pool.query(`SELECT * FROM testemunhas WHERE contrato_id = $1`, [id]);
+        const { rows: formasPagamento } = await pool.query(`SELECT * FROM formas_pagamento WHERE contrato_id = $1`, [id]);
         res.json({
             contrato: contratoRows[0],
             vendedores,
             comprador: compradores[0] || null,
-            testemunhas
+            testemunhas,
+            formasPagamento
         });
     } catch (err) {
         console.error(err);
@@ -329,13 +396,14 @@ router.get('/:id/pdf', autenticar, async (req, res) => {
         const { rows: vendedores } = await pool.query(`SELECT * FROM vendedores WHERE contrato_id = $1`, [id]);
         const { rows: compradores } = await pool.query(`SELECT * FROM compradores WHERE contrato_id = $1`, [id]);
         const { rows: testemunhas } = await pool.query(`SELECT * FROM testemunhas WHERE contrato_id = $1`, [id]);
+        const { rows: formasPagamento } = await pool.query(`SELECT * FROM formas_pagamento WHERE contrato_id = $1`, [id]);
 
         if (vendedores.length === 0 || compradores.length === 0) {
             return res.status(400).json({ erro: 'Contrato ainda não tem vendedor e/ou comprador preenchidos' });
         }
 
         const pdfBuffer = await gerarPdfContrato({
-            contrato, vendedores, comprador: compradores[0], testemunhas
+            contrato, vendedores, comprador: compradores[0], testemunhas, formasPagamento
         });
 
         res.setHeader('Content-Type', 'application/pdf');
