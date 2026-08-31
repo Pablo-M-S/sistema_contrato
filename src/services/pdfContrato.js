@@ -1,4 +1,52 @@
 const PDFDocument = require('pdfkit');
+const path = require('path');
+
+const LOGO_PATH = path.join(__dirname, '..', 'painel', 'img', 'logo-dourado-transparente.png');
+const RODAPE_TEXTO = 'Imobiliária Deon e Silva Ltda. — CNPJ 49.699.403/0001-60 — CRECI J-8625';
+
+// Rótulos e texto de cada forma de pagamento extra (além de sinal e
+// financiamento, que já têm cláusula própria). FGTS/subsídio/balão/parcelas/
+// valor à vista são em dinheiro; veículo e imóvel são permuta (bem dado como
+// parte do pagamento), por isso têm descrição própria em vez de um valor.
+const LABEL_FORMA_PAGAMENTO = {
+    fgts: 'FGTS',
+    subsidio_caixa: 'Subsídio Caixa',
+    assinatura_banco: 'Pagamento na assinatura do banco',
+    balao: 'Balão',
+    parcelas: 'Parcelas',
+    valor_vista: 'Valor à vista',
+    veiculo: 'Veículo (permuta)',
+    imovel: 'Imóvel (permuta)',
+};
+
+function textoFormaPagamento(f) {
+    const label = LABEL_FORMA_PAGAMENTO[f.tipo] || f.tipo;
+    if (f.tipo === 'veiculo') {
+        const partes = [
+            f.veiculo_modelo && `modelo ${f.veiculo_modelo}`,
+            f.veiculo_ano && `ano ${f.veiculo_ano}`,
+            f.veiculo_cor && `cor ${f.veiculo_cor}`,
+            f.veiculo_combustivel && `combustível ${f.veiculo_combustivel}`,
+            f.veiculo_placa && `placa ${f.veiculo_placa}`,
+            f.veiculo_chassi && `chassi ${f.veiculo_chassi}`,
+            f.veiculo_renavam && `RENAVAM ${f.veiculo_renavam}`,
+        ].filter(Boolean).join(', ');
+        return `${label}: ${partes}${f.descricao ? ` (${f.descricao})` : ''}.`;
+    }
+    if (f.tipo === 'imovel') {
+        const partes = [
+            f.imovel_lote && `lote ${f.imovel_lote}`,
+            f.imovel_quadra && `quadra ${f.imovel_quadra}`,
+            f.imovel_loteamento && `loteamento ${f.imovel_loteamento}`,
+            f.imovel_matricula && `matrícula M-${f.imovel_matricula}`,
+            f.imovel_unidade && `unidade ${f.imovel_unidade}`,
+            f.imovel_pavimento && `pavimento ${f.imovel_pavimento}`,
+            f.imovel_metragem && `${f.imovel_metragem} m²`,
+        ].filter(Boolean).join(', ');
+        return `${label}: ${f.imovel_descricao}${partes ? ` (${partes})` : ''}.`;
+    }
+    return `${label}: ${reais(f.valor)}${f.descricao ? ` — ${f.descricao}` : ''}.`;
+}
 
 // Formata número em reais por extenso simplificado (só o valor em R$, sem
 // extenso completo - o extenso fica a cargo de revisão manual se a
@@ -36,7 +84,7 @@ function montarDescricaoImovel(c) {
     return texto;
 }
 
-function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas }) {
+function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas, formasPagamento = [] }) {
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({ margin: 60, size: 'A4' });
         const bufs = [];
@@ -44,11 +92,35 @@ function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas }) {
         doc.on('end', () => resolve(Buffer.concat(bufs)));
         doc.on('error', reject);
 
+        // Rodapé (código do contrato + dados da imobiliária) em todas as
+        // páginas, inclusive as que forem adicionadas automaticamente pelo
+        // fluxo do texto - por isso o listener em 'pageAdded'.
+        function adicionarRodape() {
+            const alturaRodape = 30;
+            doc.font('Helvetica').fontSize(8).fillColor('#555555').text(
+                `${RODAPE_TEXTO} — Contrato Nº ${contrato.sku || '—'}`,
+                doc.page.margins.left,
+                doc.page.height - alturaRodape,
+                { align: 'center', width: doc.page.width - doc.page.margins.left - doc.page.margins.right }
+            );
+            doc.fillColor('black');
+        }
+        doc.on('pageAdded', adicionarRodape);
+
+        try {
+            doc.image(LOGO_PATH, (doc.page.width - 160) / 2, doc.y, { width: 160 });
+            doc.moveDown(3.5);
+        } catch (err) {
+            // Segue sem logo se o arquivo não puder ser lido, pra não travar a geração do contrato
+            console.error('Erro ao carregar logo no PDF:', err.message);
+        }
+
         const titulo = (t) => doc.moveDown(1).font('Helvetica-Bold').fontSize(12).text(t).moveDown(0.3).font('Helvetica').fontSize(11);
         const p = (t) => doc.text(t, { align: 'justify' }).moveDown(0.5);
 
         doc.font('Helvetica-Bold').fontSize(14).text('INSTRUMENTO PARTICULAR DE COMPROMISSO DE COMPRA E VENDA DE IMÓVEL URBANO', { align: 'center' });
         doc.moveDown(0.3).font('Helvetica').fontSize(9).text(`Contrato Nº: ${contrato.sku || '—'}`, { align: 'center' });
+        adicionarRodape();
 
         titulo('PROMITENTE VENDEDOR(ES):');
         vendedores.forEach((v) => {
@@ -70,6 +142,7 @@ function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas }) {
             const alineas = [];
             if (contrato.tem_sinal) alineas.push(`${reais(contrato.valor_sinal)}, como sinal de negócio a ser pago na conta do vendedor.`);
             if (contrato.tem_financiamento) alineas.push(`${reais(contrato.valor_financiado)}, a serem pagos por meio de financiamento bancário.`);
+            formasPagamento.forEach((f) => alineas.push(textoFormaPagamento(f)));
             alineas.forEach((texto, i) => p(`${String.fromCharCode(97 + i)}) ${texto}`));
         }
 
