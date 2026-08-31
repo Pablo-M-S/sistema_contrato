@@ -254,17 +254,24 @@ button, input, select, textarea {
   box-shadow: 0 16px 40px rgba(10,10,11,0.16), 0 2px 8px rgba(10,10,11,0.08);
 }
 .tela-login {
-  min-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
   justify-content: center;
   padding: 36px 28px;
+  width: 100%;
   max-width: 420px;
   margin: 24px auto;
   background: var(--bg-dark);
   border-radius: 16px;
   border-top: 3px solid var(--gold);
   box-shadow: 0 16px 40px rgba(10,10,11,0.16), 0 2px 8px rgba(10,10,11,0.08);
+}
+
+body:has(.tela-login) {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .cabecalho-tela {
