@@ -656,6 +656,12 @@ function renderEtapaFinanceiro() {
     </div>
 
     <div class="campo">
+      <label for="f-comissao-pct">Comissão da imobiliária (%) <span class="opcional">(opcional)</span></label>
+      <input id="f-comissao-pct" inputmode="decimal" placeholder="Ex: 6" value="${f.comissao_percentual ?? ''}">
+      <div class="ajuda">Calcula automaticamente em cima do valor total. Se preferir, digite um valor fixo em R$ abaixo.</div>
+    </div>
+
+    <div class="campo">
       <label for="f-comissao">Comissão da imobiliária (R$) <span class="opcional">(opcional)</span></label>
       <input id="f-comissao" inputmode="decimal" value="${f.comissao_imobiliaria ?? ''}">
     </div>
@@ -671,6 +677,20 @@ function renderEtapaFinanceiro() {
   `;
 
   wirearCamposCondicionais();
+
+  // Comissão: recalcula o valor em R$ sempre que a % ou o valor total mudar
+  const inputValorTotal = document.getElementById('f-valor-total');
+  const inputComissaoPct = document.getElementById('f-comissao-pct');
+  const inputComissaoValor = document.getElementById('f-comissao');
+  function recalcularComissao() {
+    const pct = paraNumero(inputComissaoPct.value);
+    const total = paraNumero(inputValorTotal.value);
+    if (pct !== null && total !== null) {
+      inputComissaoValor.value = (total * pct / 100).toFixed(2).replace('.', ',');
+    }
+  }
+  inputComissaoPct.addEventListener('input', recalcularComissao);
+  inputValorTotal.addEventListener('input', recalcularComissao);
 
   document.getElementById('f-tem-financiamento').addEventListener('change', (e) => {
     document.getElementById('bloco-financiamento').classList.toggle('oculto', !e.target.checked);
@@ -728,6 +748,7 @@ function renderEtapaFinanceiro() {
       valor_avaliacao: temFinanciamento ? paraNumero(document.getElementById('f-valor-avaliacao').value) : null,
       custo_transferencia: temFinanciamento ? paraNumero(document.getElementById('f-custo-transferencia').value) : null,
       comissao_imobiliaria: paraNumero(document.getElementById('f-comissao').value),
+      comissao_percentual: paraNumero(document.getElementById('f-comissao-pct').value),
     };
 
     // Se ainda não existe o contrato no backend, cria agora (rascunho)
