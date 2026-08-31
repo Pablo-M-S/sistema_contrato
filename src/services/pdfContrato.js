@@ -97,6 +97,16 @@ function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas, formas
         // fluxo do texto - por isso o listener em 'pageAdded'.
         function adicionarRodape() {
             const alturaRodape = 30;
+            // O texto do rodapé usa posição absoluta (x,y fixos perto do fim
+            // da página), mas o PDFKit atualiza o cursor de escrita (doc.x/
+            // doc.y) pra onde esse texto foi escrito. Sem salvar e restaurar
+            // esse cursor, todo o conteúdo seguinte passava a "nascer" perto
+            // do rodapé em vez de continuar de onde estava - em contratos
+            // longos isso disparava um loop de paginação (cada página nova
+            // precisando de mais uma página, e mais uma...) até estourar a
+            // pilha e derrubar a geração inteira do PDF.
+            const xAntes = doc.x;
+            const yAntes = doc.y;
             doc.font('Helvetica').fontSize(8).fillColor('#555555').text(
                 `${RODAPE_TEXTO} — Contrato Nº ${contrato.sku || '—'}`,
                 doc.page.margins.left,
@@ -104,6 +114,8 @@ function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas, formas
                 { align: 'center', width: doc.page.width - doc.page.margins.left - doc.page.margins.right }
             );
             doc.fillColor('black');
+            doc.x = xAntes;
+            doc.y = yAntes;
         }
         doc.on('pageAdded', adicionarRodape);
 
@@ -216,6 +228,20 @@ function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas, formas
             doc.text('_'.repeat(50), { align: 'center' });
             doc.text(`${t.nome} — CPF: ${t.cpf}`, { align: 'center' }).moveDown(1);
         });
+
+        // Nota explicativa sobre o Art. 784 do CPC (reconhecimento de firma x
+        // assinatura de 2 testemunhas) + logo no final, igual à minuta oficial.
+        doc.moveDown(1.5).fontSize(9).fillColor('#333333');
+        p('Questão do contrato com reconhecimento de firma ou assinatura de duas testemunhas: O Artigo 784 do Código de Processo Civil dispõe sobre quais são os títulos executivos extrajudiciais, sendo que em seu Inciso III menciona sobre o documento particular assinado por 2 (duas) testemunhas. Ou seja, em interpretação literal do artigo acima, entende-se que, para que um contrato firmado entre as partes seja considerado título executivo extrajudicial, deve contar com a assinatura de duas testemunhas, devidamente identificadas. Perceba que não há qualquer menção à obrigatoriedade de reconhecimento de firma. Sendo assim, em caso de inadimplência de alguma das partes, se o contrato firmado contar com assinatura de duas testemunhas, poderá ser ajuizada demanda executória em face do devedor (inadimplente), sem a necessidade de passar pelo processo de conhecimento, garantindo maior agilidade ao credor e menos tumulto nos procedimentos judiciais (que verificamos na prática a massiva quantidade de processos).');
+        doc.fillColor('black').fontSize(11);
+
+        try {
+            const larguraLogoFinal = 180;
+            doc.moveDown(1).image(LOGO_PATH, (doc.page.width - larguraLogoFinal) / 2, doc.y, { width: larguraLogoFinal });
+        } catch (err) {
+            // Segue sem o logo final se o arquivo não puder ser lido, pra não travar a geração do contrato
+            console.error('Erro ao carregar logo final no PDF:', err.message);
+        }
 
         doc.end();
     });
