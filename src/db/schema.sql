@@ -76,6 +76,47 @@ CREATE INDEX IF NOT EXISTS idx_contratos_status ON contratos(status);
 CREATE INDEX IF NOT EXISTS idx_contratos_financiamento ON contratos(tem_financiamento);
 CREATE INDEX IF NOT EXISTS idx_contratos_criado_em ON contratos(criado_em);
 
+-- Formas de pagamento extras, além do sinal e do financiamento (que já têm
+-- campos próprios em `contratos`). Pedido da imobiliária: FGTS, subsídio
+-- Caixa, pagamento na assinatura do banco, balão e parcelas usam só um
+-- valor em R$; veículo e imóvel são permuta (parte do pagamento em bem, não
+-- em dinheiro) e por isso têm campos descritivos próprios.
+CREATE TABLE IF NOT EXISTS formas_pagamento (
+    id SERIAL PRIMARY KEY,
+    contrato_id INTEGER REFERENCES contratos(id) ON DELETE CASCADE NOT NULL,
+    tipo VARCHAR(30) NOT NULL CHECK (tipo IN (
+        'fgts', 'subsidio_caixa', 'assinatura_banco', 'balao', 'parcelas',
+        'valor_vista', 'veiculo', 'imovel'
+    )),
+    valor NUMERIC(14,2), -- obrigatório pros tipos em dinheiro (validado em routes/contratos.js)
+    descricao TEXT,      -- observação livre (parcelamento, condições, etc.)
+
+    -- Só preenchidos quando tipo = 'veiculo' (dados do bem dado em permuta)
+    veiculo_modelo VARCHAR(100),
+    veiculo_placa VARCHAR(20),
+    veiculo_chassi VARCHAR(30),
+    veiculo_renavam VARCHAR(20),
+    veiculo_cor VARCHAR(40),
+    veiculo_combustivel VARCHAR(30),
+    veiculo_ano VARCHAR(10),
+
+    -- Só preenchidos quando tipo = 'imovel' (mesmo padrão de campos da
+    -- Cláusula Primeira / objeto do contrato, mas para o imóvel dado em
+    -- permuta pelo comprador)
+    imovel_descricao TEXT,
+    imovel_lote VARCHAR(50),
+    imovel_quadra VARCHAR(50),
+    imovel_loteamento VARCHAR(150),
+    imovel_matricula VARCHAR(50),
+    imovel_unidade VARCHAR(50),
+    imovel_pavimento VARCHAR(50),
+    imovel_metragem NUMERIC(10,2),
+
+    criado_em TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_formas_pagamento_contrato ON formas_pagamento(contrato_id);
+
 CREATE TABLE IF NOT EXISTS vendedores (
     id SERIAL PRIMARY KEY,
     contrato_id INTEGER REFERENCES contratos(id) ON DELETE CASCADE NOT NULL,
