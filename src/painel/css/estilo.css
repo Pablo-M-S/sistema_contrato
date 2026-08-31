@@ -86,11 +86,20 @@ button, input, select, textarea {
 .btn-secondary:hover { border-color: var(--gold-dim); }
 
 .btn-ghost {
+  -webkit-appearance: none;
+  appearance: none;
   background: transparent;
+  border: 1px solid transparent;
   color: var(--text-dim);
   width: auto;
   padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
 }
+.btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+.btn-ghost:active { transform: scale(0.96); }
 
 .btn-danger {
   background: transparent;
