@@ -700,9 +700,29 @@ function renderEtapaFinanceiro() {
           <input id="f-valor-avaliacao" inputmode="decimal" value="${f.valor_avaliacao ?? ''}">
         </div>
       </div>
+      <div class="campo-check">
+        <input type="checkbox" id="f-segundo-imovel" ${f.segundo_imovel_financiado ? 'checked' : ''}>
+        <label for="f-segundo-imovel">É o 2º imóvel financiado por este comprador (taxa de 0,5% em vez de 2%)</label>
+      </div>
+
+      ${renderCampoCondicional(CAMPO_ENTRADA, f)}
+
+      <div class="linha-2">
+        <div class="campo">
+          <label for="f-taxa-banco">Taxa do banco (R$)</label>
+          <input id="f-taxa-banco" inputmode="decimal" value="${f.taxa_banco ?? '5000'}">
+        </div>
+        <div class="campo">
+          <label for="f-custas-cartorio">Custas de cartório (R$)</label>
+          <input id="f-custas-cartorio" inputmode="decimal" value="${f.custas_cartorio ?? ''}">
+          <div class="ajuda">Varia por cartório; teto usual é R$ 1.200</div>
+        </div>
+      </div>
+
       <div class="campo">
-        <label for="f-custo-transferencia">Custo de transferência (R$)</label>
-        <input id="f-custo-transferencia" inputmode="decimal" value="${f.custo_transferencia ?? ''}">
+        <label>Custo de transferência (calculado)</label>
+        <input id="f-custo-transferencia-calc" value="${formatarMoeda(f.custo_transferencia || 0)}" disabled>
+        <div class="ajuda">Financiamento (0,5%/2%) + ITBI + taxa do banco + custas de cartório${imovelTemMaisDe80m2() ? ' + FUNREJUS (R$ 762, imóvel > 80m²)' : ''}</div>
       </div>
     </div>
 
@@ -747,6 +767,21 @@ function renderEtapaFinanceiro() {
     document.getElementById('bloco-financiamento').classList.toggle('oculto', !e.target.checked);
   });
 
+  // Recalcula o custo de transferência ao vivo sempre que qualquer campo que
+  // entra na fórmula mudar (ver calcularCustoTransferencia).
+  ['f-valor-financiado', 'f-valor-total', 'f-taxa-banco', 'f-custas-cartorio'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('input', recalcularCustoTransferenciaTela);
+  });
+  document.getElementById('f-segundo-imovel').addEventListener('change', recalcularCustoTransferenciaTela);
+  // Toggles sim/não (sinal e desconto ITBI) também disparam recálculo -
+  // wirearCamposCondicionais() já tratou o toggle em si, aqui só plugamos
+  // o recálculo em cima do clique.
+  document.querySelectorAll('#bloco-financiamento .toggle-opcao, [data-campo="tem_desconto_primeiro_imovel"] .toggle-opcao').forEach((btn) => {
+    btn.addEventListener('click', recalcularCustoTransferenciaTela);
+  });
+  document.getElementById('valor-valor_entrada')?.addEventListener('input', recalcularCustoTransferenciaTela);
+  recalcularCustoTransferenciaTela();
+
   document.getElementById('btn-voltar-2').addEventListener('click', () => {
     estadoWizard.etapa = 1;
     renderWizard();
@@ -779,12 +814,28 @@ function renderEtapaFinanceiro() {
     }
 
     const temFinanciamento = document.getElementById('f-tem-financiamento').checked;
+    let respostaEntrada;
     if (temFinanciamento) {
       for (const { id, label } of CAMPOS_FINANCIAMENTO) {
         const valor = document.getElementById(id).value.trim();
         if (!valor) {
           mostrarToast(`Preencha "${label}" (obrigatório com financiamento).`, true);
           document.getElementById(id).focus();
+          return;
+        }
+      }
+      const containerEntrada = document.querySelector(`.campo-condicional[data-campo="${CAMPO_ENTRADA.flag}"]`);
+      respostaEntrada = containerEntrada.dataset.resposta;
+      if (respostaEntrada === undefined) {
+        mostrarToast('Informe se o comprador tem desconto de ITBI de primeiro imóvel (sim/não).', true);
+        containerEntrada.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      if (respostaEntrada === 'true') {
+        const valorEntradaInput = document.getElementById('valor-valor_entrada').value.trim();
+        if (!valorEntradaInput) {
+          mostrarToast('Informe o valor da entrada (marcado como "sim").', true);
+          document.getElementById('valor-valor_entrada').focus();
           return;
         }
       }
@@ -797,7 +848,12 @@ function renderEtapaFinanceiro() {
       tem_financiamento: temFinanciamento,
       valor_financiado: temFinanciamento ? paraNumero(document.getElementById('f-valor-financiado').value) : null,
       valor_avaliacao: temFinanciamento ? paraNumero(document.getElementById('f-valor-avaliacao').value) : null,
-      custo_transferencia: temFinanciamento ? paraNumero(document.getElementById('f-custo-transferencia').value) : null,
+      segundo_imovel_financiado: temFinanciamento ? document.getElementById('f-segundo-imovel').checked : null,
+      tem_desconto_primeiro_imovel: temFinanciamento ? respostaEntrada === 'true' : null,
+      valor_entrada: temFinanciamento && respostaEntrada === 'true' ? paraNumero(document.getElementById('valor-valor_entrada').value) : null,
+      taxa_banco: temFinanciamento ? paraNumero(document.getElementById('f-taxa-banco').value) : null,
+      custas_cartorio: temFinanciamento ? paraNumero(document.getElementById('f-custas-cartorio').value) : null,
+      custo_transferencia: temFinanciamento ? calcularCustoTransferencia() : null,
       comissao_imobiliaria: paraNumero(document.getElementById('f-comissao').value),
       comissao_percentual: paraNumero(document.getElementById('f-comissao-pct').value),
     };
