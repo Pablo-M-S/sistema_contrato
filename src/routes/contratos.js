@@ -415,36 +415,6 @@ router.get('/:id/pdf', autenticar, async (req, res) => {
     }
 });
 
-// Detalhe completo do contrato (imóvel, financeiro, vendedores, testemunhas)
-// em JSON - usado pela tela de revisão do wizard pra mostrar os dados reais
-// antes de gerar o link, e por qualquer outra tela que precise conferir o
-// que já foi preenchido sem precisar abrir o PDF.
-router.get('/:id', autenticar, async (req, res) => {
-    const { id } = req.params;
-    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
-        return res.status(404).json({ erro: 'Contrato não encontrado' });
-    }
-    try {
-        const { rows: contratoRows } = await pool.query(`SELECT * FROM contratos WHERE id = $1`, [id]);
-        if (!contratoRows[0]) {
-            return res.status(404).json({ erro: 'Contrato não encontrado' });
-        }
-        const { rows: vendedores } = await pool.query(`SELECT * FROM vendedores WHERE contrato_id = $1 ORDER BY id`, [id]);
-        const { rows: compradores } = await pool.query(`SELECT * FROM compradores WHERE contrato_id = $1`, [id]);
-        const { rows: testemunhas } = await pool.query(`SELECT * FROM testemunhas WHERE contrato_id = $1 ORDER BY id`, [id]);
-
-        res.json({
-            contrato: contratoRows[0],
-            vendedores,
-            comprador: compradores[0] || null,
-            testemunhas
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ erro: 'Erro ao buscar contrato' });
-    }
-});
-
 // Editar um vendedor já cadastrado (corrigir digitação sem precisar recriar
 // o contrato do zero). Mesma validação obrigatória da criação.
 router.put('/:id/vendedores/:vendedorId', autenticar, async (req, res) => {
@@ -479,21 +449,6 @@ router.put('/:id/vendedores/:vendedorId', autenticar, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ erro: 'Erro ao atualizar vendedor' });
-    }
-});
-
-// Remover vendedor (corrigir cadastro duplicado ou trocado por engano)
-router.delete('/:id/vendedores/:vendedorId', autenticar, async (req, res) => {
-    const { id, vendedorId } = req.params;
-    if (!(await contratoPertenceAoCorretor(id, req.corretor))) {
-        return res.status(404).json({ erro: 'Contrato não encontrado' });
-    }
-    try {
-        await pool.query(`DELETE FROM vendedores WHERE id = $1 AND contrato_id = $2`, [vendedorId, id]);
-        res.status(204).send();
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ erro: 'Erro ao remover vendedor' });
     }
 });
 
