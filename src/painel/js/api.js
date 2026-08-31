@@ -81,6 +81,9 @@ const Api = {
   criarContrato(dados) {
     return this.post('/api/contratos', dados);
   },
+  buscarContrato(contratoId) {
+    return this.get(`/api/contratos/${contratoId}`);
+  },
   adicionarVendedor(contratoId, dados) {
     return this.post(`/api/contratos/${contratoId}/vendedores`, dados);
   },
