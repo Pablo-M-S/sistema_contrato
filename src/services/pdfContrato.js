@@ -97,22 +97,28 @@ function gerarPdfContrato({ contrato, vendedores, comprador, testemunhas, formas
         // fluxo do texto - por isso o listener em 'pageAdded'.
         function adicionarRodape() {
             const alturaRodape = 30;
-            // O texto do rodapé usa posição absoluta (x,y fixos perto do fim
-            // da página), mas o PDFKit atualiza o cursor de escrita (doc.x/
-            // doc.y) pra onde esse texto foi escrito. Sem salvar e restaurar
-            // esse cursor, todo o conteúdo seguinte passava a "nascer" perto
-            // do rodapé em vez de continuar de onde estava - em contratos
-            // longos isso disparava um loop de paginação (cada página nova
-            // precisando de mais uma página, e mais uma...) até estourar a
-            // pilha e derrubar a geração inteira do PDF.
             const xAntes = doc.x;
             const yAntes = doc.y;
+            // O texto do rodapé é escrito dentro da margem inferior da
+            // página (perto do fim de tudo). Sem isso, o próprio PDFKit
+            // entende que esse texto "não cabe" na área de conteúdo e cria
+            // uma página nova sozinho só pra encaixá-lo - o que dispara o
+            // evento 'pageAdded' de novo, que chama adicionarRodape() de
+            // novo, que cria outra página... um loop infinito e SÍNCRONO
+            // (tudo dentro da mesma call stack) até estourar a pilha do
+            // Node com "Maximum call stack size exceeded" bem em
+            // PDFDocument.addPage - exatamente o erro visto nos logs.
+            // Zerar margins.bottom temporariamente avisa o PDFKit que pode
+            // escrever ali sem precisar de página nova.
+            const margemInferiorAntes = doc.page.margins.bottom;
+            doc.page.margins.bottom = 0;
             doc.font('Helvetica').fontSize(8).fillColor('#555555').text(
                 `${RODAPE_TEXTO} — Contrato Nº ${contrato.sku || '—'}`,
                 doc.page.margins.left,
                 doc.page.height - alturaRodape,
-                { align: 'center', width: doc.page.width - doc.page.margins.left - doc.page.margins.right }
+                { align: 'center', width: doc.page.width - doc.page.margins.left - doc.page.margins.right, lineBreak: false }
             );
+            doc.page.margins.bottom = margemInferiorAntes;
             doc.fillColor('black');
             doc.x = xAntes;
             doc.y = yAntes;
