@@ -93,6 +93,9 @@ const Api = {
   removerTestemunha(contratoId, testemunhaId) {
     return this.del(`/api/contratos/${contratoId}/testemunhas/${testemunhaId}`);
   },
+  removerVendedor(contratoId, vendedorId) {
+    return this.del(`/api/contratos/${contratoId}/vendedores/${vendedorId}`);
+  },
   gerarLink(contratoId) {
     return this.post(`/api/contratos/${contratoId}/gerar-link`);
   },
