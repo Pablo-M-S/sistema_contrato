@@ -955,10 +955,6 @@ function renderEtapaVendedores() {
       mostrarToast('Adicione pelo menos um vendedor antes de continuar.', true);
       return;
     }
-    if (estadoWizard.testemunhas.length < 2) {
-      mostrarToast('Cadastre as 2 testemunhas antes de continuar — sem elas o cliente não consegue finalizar o contrato.', true);
-      return;
-    }
     estadoWizard.etapa = 4;
     renderWizard();
   });
