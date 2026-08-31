@@ -117,6 +117,7 @@ async function renderDetalheContrato(id) {
   const vendedores = dados.vendedores || [];
   const comprador = dados.comprador;
   const testemunhas = dados.testemunhas || [];
+  const formasPagamento = dados.formasPagamento || [];
   const status = c.status || 'rascunho';
 
   const camposImovel = [
@@ -153,6 +154,10 @@ async function renderDetalheContrato(id) {
           <div class="meta" style="margin-top:4px;">Custo de transferência: ${formatarMoeda(c.custo_transferencia)}</div>
         ` : ''}
         ${c.comissao_imobiliaria ? `<div class="meta" style="margin-top:4px;">Comissão: ${formatarMoeda(c.comissao_imobiliaria)}</div>` : ''}
+        ${formasPagamento.length > 0 ? `
+          <div class="meta" style="margin-top:10px;">Outras formas de pagamento:</div>
+          ${formasPagamento.map((f) => `<div class="meta">${labelFormaPagamento(f)}: ${resumoFormaPagamento(f)}</div>`).join('')}
+        ` : ''}
       </div>
 
       <div class="meta" style="margin:18px 0 8px;">Vendedor(es)</div>
@@ -457,7 +462,7 @@ function renderListaContratos(contratos) {
 // ---------------------------------------------------------------
 // Wizard: Novo contrato
 // ---------------------------------------------------------------
-const TOTAL_ETAPAS = 5;
+const TOTAL_ETAPAS = 6;
 
 const estadoWizard = {
   etapa: 1,
@@ -465,6 +470,7 @@ const estadoWizard = {
   sku: null,
   imovel: {},
   financeiro: { tem_financiamento: false },
+  formasPagamento: [],
   vendedores: [],
   testemunhas: [],
 };
@@ -475,6 +481,7 @@ function resetarWizard() {
   estadoWizard.sku = null;
   estadoWizard.imovel = {};
   estadoWizard.financeiro = { tem_financiamento: false };
+  estadoWizard.formasPagamento = [];
   estadoWizard.vendedores = [];
   estadoWizard.testemunhas = [];
 }
@@ -504,8 +511,9 @@ function renderWizard() {
 
   if (estadoWizard.etapa === 1) renderEtapaImovel();
   else if (estadoWizard.etapa === 2) renderEtapaFinanceiro();
-  else if (estadoWizard.etapa === 3) renderEtapaVendedores();
-  else if (estadoWizard.etapa === 4) renderEtapaTestemunhas();
+  else if (estadoWizard.etapa === 3) renderEtapaFormasPagamento();
+  else if (estadoWizard.etapa === 4) renderEtapaVendedores();
+  else if (estadoWizard.etapa === 5) renderEtapaTestemunhas();
   else renderEtapaRevisao();
 }
 
@@ -613,11 +621,54 @@ function renderEtapaImovel() {
 // sinal separado); os 3 campos abaixo só são obrigatórios quando o negócio
 // envolve financiamento, porque só nesse caso aparecem no contrato final.
 const CAMPO_SINAL = { flag: 'tem_sinal', valor: 'valor_sinal', label: 'Sinal (R$)', tipo: 'numero' };
+// Valor da entrada só é pedido se o comprador tiver desconto de ITBI de
+// primeiro imóvel (ver CAMPO_ENTRADA); sem desconto, o ITBI usa valor_total.
+const CAMPO_ENTRADA = { flag: 'tem_desconto_primeiro_imovel', valor: 'valor_entrada', label: 'Comprador tem desconto de ITBI de primeiro imóvel?', tipo: 'numero', placeholder: 'Valor da entrada (R$)' };
+// custo_transferencia deixou de ser digitado manualmente - agora é calculado
+// a partir destes campos (regra repassada pela imobiliária): ver
+// calcularCustoTransferencia().
 const CAMPOS_FINANCIAMENTO = [
   { id: 'f-valor-financiado', campo: 'valor_financiado', label: 'Valor financiado' },
   { id: 'f-valor-avaliacao', campo: 'valor_avaliacao', label: 'Valor de avaliação' },
-  { id: 'f-custo-transferencia', campo: 'custo_transferencia', label: 'Custo de transferência' },
+  { id: 'f-taxa-banco', campo: 'taxa_banco', label: 'Taxa do banco' },
+  { id: 'f-custas-cartorio', campo: 'custas_cartorio', label: 'Custas de cartório' },
 ];
+
+// FUNREJUS entra automaticamente quando o imóvel tem mais de 80m² - usa o
+// mesmo dado já coletado na Etapa 1 (tem_metragem/metragem), sem pedir de
+// novo aqui.
+function imovelTemMaisDe80m2() {
+  if (!estadoWizard.imovel.tem_metragem) return false;
+  const m = paraNumero(estadoWizard.imovel.metragem);
+  return m !== null && m > 80;
+}
+
+// Regra passada pela imobiliária (financiamento x 0,5% ou 2% + ITBI +
+// taxa do banco + custas de cartório + FUNREJUS se >80m²). Todo o cálculo
+// é aproximado - custas de cartório variam por cartório, por isso ficam
+// como campo digitado (com aviso de teto usual), não fixo.
+function calcularCustoTransferencia() {
+  const valorFinanciado = paraNumero(document.getElementById('f-valor-financiado')?.value) || 0;
+  const segundoImovel = document.getElementById('f-segundo-imovel')?.checked || false;
+  const taxaFinanciamento = valorFinanciado * (segundoImovel ? 0.005 : 0.02);
+
+  const containerEntrada = document.querySelector(`.campo-condicional[data-campo="${CAMPO_ENTRADA.flag}"]`);
+  const temDesconto = containerEntrada?.dataset.resposta === 'true';
+  const valorEntrada = paraNumero(document.getElementById('valor-valor_entrada')?.value) || 0;
+  const valorTotal = paraNumero(document.getElementById('f-valor-total')?.value) || 0;
+  const itbi = temDesconto ? valorEntrada * 0.02 : valorTotal * 0.02;
+
+  const taxaBanco = paraNumero(document.getElementById('f-taxa-banco')?.value) || 0;
+  const custasCartorio = paraNumero(document.getElementById('f-custas-cartorio')?.value) || 0;
+  const funrejus = imovelTemMaisDe80m2() ? 762 : 0;
+
+  return taxaFinanciamento + itbi + taxaBanco + custasCartorio + funrejus;
+}
+
+function recalcularCustoTransferenciaTela() {
+  const display = document.getElementById('f-custo-transferencia-calc');
+  if (display) display.value = formatarMoeda(calcularCustoTransferencia());
+}
 
 function renderEtapaFinanceiro() {
   const f = estadoWizard.financeiro;
@@ -776,7 +827,262 @@ function renderEtapaFinanceiro() {
   });
 }
 
-// ---- Etapa 3: Vendedores ----
+// ---- Etapa 3: Formas de pagamento extras ----
+// Além do sinal e do financiamento (que já têm campos próprios na Etapa 2),
+// a imobiliária pode registrar outros valores que compõem o preço: FGTS,
+// subsídio Caixa, pagamento na assinatura do banco, balão, parcelas e valor
+// à vista (todos em dinheiro) - ou veículo/imóvel dados em permuta (bem no
+// lugar de dinheiro, por isso pedem descrição em vez de valor).
+const TIPOS_FORMA_PAGAMENTO = [
+  { valor: 'fgts', label: 'FGTS' },
+  { valor: 'subsidio_caixa', label: 'Subsídio Caixa' },
+  { valor: 'assinatura_banco', label: 'Pagamento na assinatura do banco' },
+  { valor: 'balao', label: 'Balão' },
+  { valor: 'parcelas', label: 'Parcelas' },
+  { valor: 'valor_vista', label: 'Valor à vista' },
+  { valor: 'veiculo', label: 'Veículo (permuta)' },
+  { valor: 'imovel', label: 'Imóvel (permuta)' },
+];
+const TIPOS_FORMA_PAGAMENTO_MONETARIOS = ['fgts', 'subsidio_caixa', 'assinatura_banco', 'balao', 'parcelas', 'valor_vista'];
+
+function labelFormaPagamento(item) {
+  return TIPOS_FORMA_PAGAMENTO.find((t) => t.valor === item.tipo)?.label || item.tipo;
+}
+
+function resumoFormaPagamento(item) {
+  if (item.tipo === 'veiculo') return item.veiculo_modelo || 'Veículo';
+  if (item.tipo === 'imovel') return item.imovel_descricao || 'Imóvel em permuta';
+  return formatarMoeda(item.valor);
+}
+
+function renderEtapaFormasPagamento() {
+  document.getElementById('conteudo-etapa').innerHTML = `
+    <h2 class="wizard-etapa-titulo display">Outras formas de pagamento</h2>
+    <p class="wizard-etapa-sub">Opcional - além do sinal e do financiamento já informados, registre aqui FGTS, subsídio, balão, parcelas, veículo ou imóvel dado em permuta, etc.</p>
+
+    <div id="lista-formas-pagamento">
+      ${estadoWizard.formasPagamento.map((f, i) => `
+        <div class="item-pessoa">
+          <div>
+            <div class="nome">${labelFormaPagamento(f)}</div>
+            <div class="doc">${resumoFormaPagamento(f)}</div>
+          </div>
+          <button type="button" class="btn-remover-forma-pagamento" data-index="${i}" aria-label="Remover">✕</button>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="card" style="margin-top:8px;">
+      <div class="campo">
+        <label for="fp-tipo">Tipo</label>
+        <select id="fp-tipo">
+          ${TIPOS_FORMA_PAGAMENTO.map((t) => `<option value="${t.valor}">${t.label}</option>`).join('')}
+        </select>
+      </div>
+
+      <div id="fp-bloco-monetario" class="campo">
+        <label for="fp-valor">Valor (R$)</label>
+        <input id="fp-valor" inputmode="decimal">
+      </div>
+
+      <div id="fp-bloco-veiculo" class="oculto">
+        <div class="linha-2">
+          <div class="campo">
+            <label for="fp-v-modelo">Modelo</label>
+            <input id="fp-v-modelo">
+          </div>
+          <div class="campo">
+            <label for="fp-v-placa">Placa</label>
+            <input id="fp-v-placa">
+          </div>
+        </div>
+        <div class="linha-2">
+          <div class="campo">
+            <label for="fp-v-chassi">Chassi</label>
+            <input id="fp-v-chassi">
+          </div>
+          <div class="campo">
+            <label for="fp-v-renavam">RENAVAM</label>
+            <input id="fp-v-renavam">
+          </div>
+        </div>
+        <div class="linha-2">
+          <div class="campo">
+            <label for="fp-v-cor">Cor</label>
+            <input id="fp-v-cor">
+          </div>
+          <div class="campo">
+            <label for="fp-v-combustivel">Combustível</label>
+            <input id="fp-v-combustivel">
+          </div>
+        </div>
+        <div class="campo">
+          <label for="fp-v-ano">Ano</label>
+          <input id="fp-v-ano" inputmode="numeric">
+        </div>
+      </div>
+
+      <div id="fp-bloco-imovel" class="oculto">
+        <div class="campo">
+          <label for="fp-i-descricao">Descrição do imóvel</label>
+          <textarea id="fp-i-descricao"></textarea>
+        </div>
+        <div class="linha-2">
+          <div class="campo">
+            <label for="fp-i-lote">Lote <span class="opcional">(opcional)</span></label>
+            <input id="fp-i-lote">
+          </div>
+          <div class="campo">
+            <label for="fp-i-quadra">Quadra <span class="opcional">(opcional)</span></label>
+            <input id="fp-i-quadra">
+          </div>
+        </div>
+        <div class="campo">
+          <label for="fp-i-loteamento">Loteamento <span class="opcional">(opcional)</span></label>
+          <input id="fp-i-loteamento">
+        </div>
+        <div class="linha-2">
+          <div class="campo">
+            <label for="fp-i-matricula">Matrícula <span class="opcional">(opcional)</span></label>
+            <input id="fp-i-matricula">
+          </div>
+          <div class="campo">
+            <label for="fp-i-metragem">Metragem (m²) <span class="opcional">(opcional)</span></label>
+            <input id="fp-i-metragem" inputmode="decimal">
+          </div>
+        </div>
+        <div class="linha-2">
+          <div class="campo">
+            <label for="fp-i-unidade">Unidade <span class="opcional">(opcional)</span></label>
+            <input id="fp-i-unidade">
+          </div>
+          <div class="campo">
+            <label for="fp-i-pavimento">Pavimento <span class="opcional">(opcional)</span></label>
+            <input id="fp-i-pavimento">
+          </div>
+        </div>
+      </div>
+
+      <div class="campo">
+        <label for="fp-descricao">Observação <span class="opcional">(opcional)</span></label>
+        <input id="fp-descricao">
+      </div>
+
+      <button class="btn btn-secondary" id="btn-add-forma-pagamento">+ Adicionar</button>
+    </div>
+
+    <div class="barra-acao-fixa">
+      <div class="conteudo btn-row">
+        <button class="btn btn-secondary" id="btn-voltar-fp">Voltar</button>
+        <button class="btn btn-primary" id="btn-continuar-fp">Continuar</button>
+      </div>
+    </div>
+  `;
+
+  const selectTipo = document.getElementById('fp-tipo');
+  const blocoMonetario = document.getElementById('fp-bloco-monetario');
+  const blocoVeiculo = document.getElementById('fp-bloco-veiculo');
+  const blocoImovel = document.getElementById('fp-bloco-imovel');
+
+  function atualizarBlocosPorTipo() {
+    const tipo = selectTipo.value;
+    blocoMonetario.classList.toggle('oculto', !TIPOS_FORMA_PAGAMENTO_MONETARIOS.includes(tipo));
+    blocoVeiculo.classList.toggle('oculto', tipo !== 'veiculo');
+    blocoImovel.classList.toggle('oculto', tipo !== 'imovel');
+  }
+  selectTipo.addEventListener('change', atualizarBlocosPorTipo);
+  atualizarBlocosPorTipo();
+
+  document.getElementById('btn-add-forma-pagamento').addEventListener('click', async () => {
+    const tipo = selectTipo.value;
+    const dados = { tipo, descricao: document.getElementById('fp-descricao').value.trim() || null };
+
+    if (TIPOS_FORMA_PAGAMENTO_MONETARIOS.includes(tipo)) {
+      const valor = paraNumero(document.getElementById('fp-valor').value);
+      if (valor === null) {
+        mostrarToast('Informe o valor (R$) dessa forma de pagamento.', true);
+        document.getElementById('fp-valor').focus();
+        return;
+      }
+      dados.valor = valor;
+    } else if (tipo === 'veiculo') {
+      const modelo = document.getElementById('fp-v-modelo').value.trim();
+      if (!modelo) {
+        mostrarToast('Informe pelo menos o modelo do veículo.', true);
+        document.getElementById('fp-v-modelo').focus();
+        return;
+      }
+      dados.veiculo_modelo = modelo;
+      dados.veiculo_placa = document.getElementById('fp-v-placa').value.trim() || null;
+      dados.veiculo_chassi = document.getElementById('fp-v-chassi').value.trim() || null;
+      dados.veiculo_renavam = document.getElementById('fp-v-renavam').value.trim() || null;
+      dados.veiculo_cor = document.getElementById('fp-v-cor').value.trim() || null;
+      dados.veiculo_combustivel = document.getElementById('fp-v-combustivel').value.trim() || null;
+      dados.veiculo_ano = document.getElementById('fp-v-ano').value.trim() || null;
+    } else if (tipo === 'imovel') {
+      const descricao = document.getElementById('fp-i-descricao').value.trim();
+      if (!descricao) {
+        mostrarToast('Descreva o imóvel dado em permuta.', true);
+        document.getElementById('fp-i-descricao').focus();
+        return;
+      }
+      dados.imovel_descricao = descricao;
+      dados.imovel_lote = document.getElementById('fp-i-lote').value.trim() || null;
+      dados.imovel_quadra = document.getElementById('fp-i-quadra').value.trim() || null;
+      dados.imovel_loteamento = document.getElementById('fp-i-loteamento').value.trim() || null;
+      dados.imovel_matricula = document.getElementById('fp-i-matricula').value.trim() || null;
+      dados.imovel_unidade = document.getElementById('fp-i-unidade').value.trim() || null;
+      dados.imovel_pavimento = document.getElementById('fp-i-pavimento').value.trim() || null;
+      dados.imovel_metragem = paraNumero(document.getElementById('fp-i-metragem').value);
+    }
+
+    const btn = document.getElementById('btn-add-forma-pagamento');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      const criado = await Api.adicionarFormaPagamento(estadoWizard.contratoId, dados);
+      estadoWizard.formasPagamento.push(criado || dados);
+      renderEtapaFormasPagamento();
+    } catch (err) {
+      mostrarToast(err.message || 'Erro ao adicionar forma de pagamento.', true);
+      btn.disabled = false;
+      btn.textContent = '+ Adicionar';
+    }
+  });
+
+  document.querySelectorAll('.btn-remover-forma-pagamento').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const i = Number(btn.dataset.index);
+      const item = estadoWizard.formasPagamento[i];
+      if (!item?.id) {
+        estadoWizard.formasPagamento.splice(i, 1);
+        renderEtapaFormasPagamento();
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await Api.removerFormaPagamento(estadoWizard.contratoId, item.id);
+        estadoWizard.formasPagamento.splice(i, 1);
+        renderEtapaFormasPagamento();
+      } catch (err) {
+        mostrarToast(err.message || 'Erro ao remover forma de pagamento.', true);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  document.getElementById('btn-voltar-fp').addEventListener('click', () => {
+    estadoWizard.etapa = 2;
+    renderWizard();
+  });
+
+  document.getElementById('btn-continuar-fp').addEventListener('click', () => {
+    estadoWizard.etapa = 4;
+    renderWizard();
+  });
+}
+
+// ---- Etapa 4: Vendedores ----
 function renderEtapaVendedores() {
   document.getElementById('conteudo-etapa').innerHTML = `
     <h2 class="wizard-etapa-titulo display">Vendedor(es)</h2>
@@ -946,7 +1252,7 @@ function renderEtapaVendedores() {
   });
 
   document.getElementById('btn-voltar-3').addEventListener('click', () => {
-    estadoWizard.etapa = 2;
+    estadoWizard.etapa = 3;
     renderWizard();
   });
 
@@ -955,12 +1261,12 @@ function renderEtapaVendedores() {
       mostrarToast('Adicione pelo menos um vendedor antes de continuar.', true);
       return;
     }
-    estadoWizard.etapa = 4;
+    estadoWizard.etapa = 5;
     renderWizard();
   });
 }
 
-// ---- Etapa 4: Testemunhas ----
+// ---- Etapa 5: Testemunhas ----
 function renderEtapaTestemunhas() {
   document.getElementById('conteudo-etapa').innerHTML = `
     <h2 class="wizard-etapa-titulo display">Testemunhas</h2>
@@ -1023,7 +1329,7 @@ function renderEtapaTestemunhas() {
   }
 
   document.getElementById('btn-voltar-4').addEventListener('click', () => {
-    estadoWizard.etapa = 3;
+    estadoWizard.etapa = 4;
     renderWizard();
   });
 
@@ -1034,12 +1340,12 @@ function renderEtapaTestemunhas() {
     if (estadoWizard.testemunhas.length < 2) {
       mostrarToast('Você pode gerar o link mesmo sem as testemunhas, mas o cliente só consegue finalizar depois que as 2 forem cadastradas.', false);
     }
-    estadoWizard.etapa = 5;
+    estadoWizard.etapa = 6;
     renderWizard();
   });
 }
 
-// ---- Etapa 4: Revisão + gerar link ----
+// ---- Etapa 6: Revisão + gerar link ----
 function renderEtapaRevisao() {
   const im = estadoWizard.imovel;
   const fin = estadoWizard.financeiro;
@@ -1066,6 +1372,10 @@ function renderEtapaRevisao() {
         <div class="meta">Custo de transferência: ${formatarMoeda(fin.custo_transferencia)}</div>
       ` : '<div class="meta" style="margin-top:4px;">Sem financiamento</div>'}
       ${fin.comissao_imobiliaria ? `<div class="meta" style="margin-top:4px;">Comissão: ${formatarMoeda(fin.comissao_imobiliaria)}</div>` : ''}
+      ${estadoWizard.formasPagamento.length > 0 ? `
+        <div class="meta" style="margin-top:10px;">Outras formas de pagamento:</div>
+        ${estadoWizard.formasPagamento.map(f => `<div class="meta">${labelFormaPagamento(f)}: ${resumoFormaPagamento(f)}</div>`).join('')}
+      ` : ''}
     </div>
 
     <div class="card">
@@ -1098,7 +1408,7 @@ function renderEtapaRevisao() {
   `;
 
   document.getElementById('btn-voltar-4').addEventListener('click', () => {
-    estadoWizard.etapa = 4;
+    estadoWizard.etapa = 5;
     renderWizard();
   });
 

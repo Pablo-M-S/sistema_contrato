@@ -96,6 +96,12 @@ const Api = {
   removerVendedor(contratoId, vendedorId) {
     return this.del(`/api/contratos/${contratoId}/vendedores/${vendedorId}`);
   },
+  adicionarFormaPagamento(contratoId, dados) {
+    return this.post(`/api/contratos/${contratoId}/formas-pagamento`, dados);
+  },
+  removerFormaPagamento(contratoId, formaId) {
+    return this.del(`/api/contratos/${contratoId}/formas-pagamento/${formaId}`);
+  },
   gerarLink(contratoId) {
     return this.post(`/api/contratos/${contratoId}/gerar-link`);
   },
