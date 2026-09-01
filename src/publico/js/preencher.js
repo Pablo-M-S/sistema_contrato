@@ -148,9 +148,31 @@ function renderFormulario(contrato) {
           <div class="erro">Informe seu endereço.</div>
         </div>
 
+        <div class="campo" id="campo-estado_civil">
+          <label for="estado_civil">Estado civil</label>
+          <select id="estado_civil">
+            <option value="">Selecione</option>
+            <option value="solteiro(a)">Solteiro(a)</option>
+            <option value="casado(a)">Casado(a)</option>
+            <option value="divorciado(a)">Divorciado(a)</option>
+            <option value="viúvo(a)">Viúvo(a)</option>
+            <option value="separado(a) judicialmente">Separado(a) judicialmente</option>
+            <option value="união estável">União estável</option>
+          </select>
+          <div class="erro">Informe seu estado civil.</div>
+        </div>
+
         <div class="campo-check">
           <input type="checkbox" id="autoriza-imagem">
           <label for="autoriza-imagem">Autorizo o uso da minha imagem</label>
+        </div>
+
+        <div class="campo">
+          <label>Como você prefere assinar o contrato?</label>
+          <div class="toggle-sim-nao" id="assinatura-meio-toggle">
+            <button type="button" class="toggle-opcao ativo" data-valor="manual">Assinatura manual</button>
+            <button type="button" class="toggle-opcao" data-valor="gov_br">Pelo gov.br (se eu tiver conta)</button>
+          </div>
         </div>
 
         <button type="submit" class="btn btn-primary" id="btn-enviar">
@@ -161,6 +183,16 @@ function renderFormulario(contrato) {
   `;
 
   document.getElementById('form-comprador').addEventListener('submit', enviarFormulario);
+
+  const toggleAssinatura = document.getElementById('assinatura-meio-toggle');
+  toggleAssinatura.querySelectorAll('.toggle-opcao').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      toggleAssinatura.dataset.resposta = btn.dataset.valor;
+      toggleAssinatura.querySelectorAll('.toggle-opcao').forEach((b) => b.classList.remove('ativo'));
+      btn.classList.add('ativo');
+    });
+  });
+  toggleAssinatura.dataset.resposta = 'manual';
 }
 
 async function enviarFormulario(e) {
@@ -174,10 +206,12 @@ async function enviarFormulario(e) {
     cpf: document.getElementById('cpf').value.trim(),
     telefone: document.getElementById('telefone').value.trim(),
     endereco: document.getElementById('endereco').value.trim(),
+    estado_civil: document.getElementById('estado_civil').value,
     autoriza_imagem: document.getElementById('autoriza-imagem').checked,
+    assinatura_meio: document.getElementById('assinatura-meio-toggle').dataset.resposta || 'manual',
   };
 
-  const obrigatorios = ['nome', 'rg', 'cpf', 'telefone', 'endereco'];
+  const obrigatorios = ['nome', 'rg', 'cpf', 'telefone', 'endereco', 'estado_civil'];
   let valido = true;
   obrigatorios.forEach((campo) => {
     const elCampo = document.getElementById(`campo-${campo}`);
