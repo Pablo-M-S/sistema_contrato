@@ -44,6 +44,21 @@ CREATE TABLE IF NOT EXISTS contratos (
     metragem NUMERIC(10,2),
     tem_prazo_obra BOOLEAN,
     prazo_obra VARCHAR(100),
+    -- Nome do empreendimento/edifício (ex: "Edifício Residencial Aurora") e
+    -- número do cartório de registro de imóveis da Comarca - usados na
+    -- Cláusula Primeira pra deixar o texto igual ao da minuta oficial
+    -- (nem todo imóvel tem nome de empreendimento nem cartório numerado,
+    -- por isso seguem o mesmo padrão tem_X/valor dos demais campos do imóvel).
+    tem_empreendimento BOOLEAN,
+    empreendimento VARCHAR(150),
+    tem_cartorio_numero BOOLEAN,
+    cartorio_numero VARCHAR(10),
+
+    -- Texto completo e final da Cláusula Primeira (objeto do contrato).
+    -- Pré-preenchido a partir dos campos acima, mas o corretor pode ajustar
+    -- livremente antes de gerar o contrato - garante que o texto final saia
+    -- idêntico ao padrão da minuta mesmo em casos que fogem do automático.
+    imovel_paragrafo TEXT,
 
     -- Condições financeiras
     valor_total NUMERIC(14,2),
@@ -131,7 +146,20 @@ CREATE TABLE IF NOT EXISTS vendedores (
     cpf VARCHAR(20) NOT NULL,
     telefone VARCHAR(30) NOT NULL,
     endereco TEXT NOT NULL,
-    autoriza_imagem BOOLEAN NOT NULL
+    autoriza_imagem BOOLEAN NOT NULL,
+    -- Estado civil entra no texto do contrato junto com nacionalidade e
+    -- profissão (ex: "brasileiro, casado, empresário..."), por isso é
+    -- obrigatório (validado em routes/contratos.js) igual RG/CPF/telefone.
+    estado_civil VARCHAR(30),
+    -- Dados de quem recebe o dinheiro do sinal (Cláusula Terceira: "pago na
+    -- conta do vendedor"). Precisa de pelo menos uma forma de recebimento:
+    -- chave PIX OU banco+agência+conta+tipo completos (validado em
+    -- routes/contratos.js).
+    banco VARCHAR(100),
+    agencia VARCHAR(20),
+    conta VARCHAR(30),
+    tipo_conta VARCHAR(20) CHECK (tipo_conta IS NULL OR tipo_conta IN ('corrente', 'poupanca')),
+    chave_pix VARCHAR(150)
 );
 
 CREATE TABLE IF NOT EXISTS compradores (
@@ -145,8 +173,34 @@ CREATE TABLE IF NOT EXISTS compradores (
     telefone VARCHAR(30),
     endereco TEXT,
     autoriza_imagem BOOLEAN,
+    -- Mesmo motivo do vendedor: entra na qualificação das partes no início do contrato.
+    estado_civil VARCHAR(30),
+    -- Placeholder pra assinatura digital via gov.br: fica pronto pro cliente
+    -- escolher a forma de assinatura, mas a integração real (Portal de
+    -- Assinatura Eletrônica / Login Único do gov.br) só funciona depois que
+    -- a imobiliária se cadastrar como instituição integradora junto ao
+    -- governo e a gente plugar as credenciais/callback aqui.
+    assinatura_meio VARCHAR(20) DEFAULT 'manual' CHECK (assinatura_meio IN ('manual', 'gov_br')),
     preenchido_em TIMESTAMP
 );
+
+-- Migração idempotente: o banco do Railway já existe com as tabelas
+-- criadas, e CREATE TABLE IF NOT EXISTS não adiciona coluna nova em tabela
+-- existente. Rodar este arquivo de novo (ou só este bloco) aplica os campos
+-- novos sem apagar nada.
+ALTER TABLE contratos ADD COLUMN IF NOT EXISTS tem_empreendimento BOOLEAN;
+ALTER TABLE contratos ADD COLUMN IF NOT EXISTS empreendimento VARCHAR(150);
+ALTER TABLE contratos ADD COLUMN IF NOT EXISTS tem_cartorio_numero BOOLEAN;
+ALTER TABLE contratos ADD COLUMN IF NOT EXISTS cartorio_numero VARCHAR(10);
+ALTER TABLE contratos ADD COLUMN IF NOT EXISTS imovel_paragrafo TEXT;
+ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS estado_civil VARCHAR(30);
+ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS banco VARCHAR(100);
+ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS agencia VARCHAR(20);
+ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS conta VARCHAR(30);
+ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS tipo_conta VARCHAR(20);
+ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS chave_pix VARCHAR(150);
+ALTER TABLE compradores ADD COLUMN IF NOT EXISTS estado_civil VARCHAR(30);
+ALTER TABLE compradores ADD COLUMN IF NOT EXISTS assinatura_meio VARCHAR(20) DEFAULT 'manual';
 
 CREATE TABLE IF NOT EXISTS testemunhas (
     id SERIAL PRIMARY KEY,
