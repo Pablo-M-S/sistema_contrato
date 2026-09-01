@@ -71,7 +71,11 @@ const CAMPOS_CONDICIONAIS_IMOVEL = [
   { flag: 'tem_pavimento', valor: 'pavimento', label: 'Pavimento', tipo: 'texto' },
   { flag: 'tem_metragem', valor: 'metragem', label: 'Metragem (m²)', tipo: 'numero' },
   { flag: 'tem_prazo_obra', valor: 'prazo_obra', label: 'Prazo de obra', tipo: 'texto', placeholder: 'Ex: dezembro de 2026' },
+  { flag: 'tem_empreendimento', valor: 'empreendimento', label: 'Nome do empreendimento/edifício', tipo: 'texto' },
+  { flag: 'tem_cartorio_numero', valor: 'cartorio_numero', label: 'Nº do cartório de registro de imóveis', tipo: 'texto', placeholder: 'Ex: 1' },
 ];
+
+const OPCOES_ESTADO_CIVIL = ['Solteiro(a)', 'Casado(a)', 'Divorciado(a)', 'Viúvo(a)', 'Separado(a) judicialmente', 'União estável'];
 
 // ---------------------------------------------------------------
 // Roteamento simples por hash
@@ -121,9 +125,10 @@ async function renderDetalheContrato(id) {
   const status = c.status || 'rascunho';
 
   const camposImovel = [
-    ['Loteamento', c.loteamento], ['Quadra', c.quadra], ['Lote', c.lote],
+    ['Empreendimento', c.empreendimento], ['Loteamento', c.loteamento], ['Quadra', c.quadra], ['Lote', c.lote],
     ['Matrícula', c.matricula], ['Unidade', c.unidade], ['Pavimento', c.pavimento],
     ['Metragem', c.metragem ? `${c.metragem} m²` : null], ['Prazo de obra', c.prazo_obra],
+    ['Cartório de registro', c.cartorio_numero ? `${c.cartorio_numero}º Ofício` : null],
   ].filter(([, v]) => v);
 
   app.innerHTML = `
@@ -555,6 +560,28 @@ function wirearCamposCondicionais() {
   });
 }
 
+// Mesma lógica de src/services/pdfContrato.js (montarDescricaoImovel), só
+// que no cliente, pra sugerir o parágrafo com base no que já foi
+// preenchido nos campos condicionais. O corretor pode editar livremente
+// depois - o que vai pro contrato final é sempre o texto do textarea.
+function sugerirParagrafoImovel(d) {
+  let partes = [];
+  if (d.tem_empreendimento && d.empreendimento) partes.push(`sendo edificado no(a) ${d.empreendimento}`);
+  if (d.tem_lote && d.lote) partes.push(`sobre o terreno número lote ${d.lote}`);
+  if (d.tem_quadra && d.quadra) partes.push(`da quadra número ${d.quadra}`);
+  if (d.tem_loteamento && d.loteamento) partes.push(`do loteamento ${d.loteamento}`);
+  if (d.tem_matricula && d.matricula) partes.push(`(matrícula do terreno M-${d.matricula})`);
+  let unidadeTxt = '';
+  if (d.tem_unidade && d.unidade) unidadeTxt += `, sendo a unidade n° ${d.unidade}`;
+  if (d.tem_pavimento && d.pavimento) unidadeTxt += ` do pavimento ${d.pavimento}`;
+  if (d.tem_empreendimento && d.empreendimento) unidadeTxt += ` do(a) ${d.empreendimento}`;
+  let texto = `O presente instrumento tem por objeto a venda e compra de um imóvel ${partes.join(', ')}${unidadeTxt}.`;
+  if (d.tem_metragem && d.metragem) texto += ` A unidade possui ${d.metragem} m² de área construída.`;
+  const cartorio = d.tem_cartorio_numero && d.cartorio_numero ? `${d.cartorio_numero}º ` : '';
+  texto += ` Nesta cidade e Comarca de Cascavel–PR, a qual vai possuir matrícula de unidade individual no ${cartorio}Serviço de Registro de Imóveis desta Comarca.`;
+  return texto;
+}
+
 function renderEtapaImovel() {
   const d = estadoWizard.imovel;
   document.getElementById('conteudo-etapa').innerHTML = `
@@ -568,6 +595,13 @@ function renderEtapaImovel() {
 
     ${CAMPOS_CONDICIONAIS_IMOVEL.map((campo) => renderCampoCondicional(campo, d)).join('')}
 
+    <div class="campo">
+      <label for="c-paragrafo">Parágrafo da Cláusula Primeira (objeto do contrato)</label>
+      <textarea id="c-paragrafo" rows="6">${d.imovel_paragrafo || ''}</textarea>
+      <p class="wizard-etapa-sub" style="margin-top:6px;">Esse é o texto que vai direto para o contrato. Preencha os campos acima e toque em "Gerar sugestão" para começar, depois ajuste como quiser.</p>
+      <button type="button" class="btn btn-secondary" id="btn-sugerir-paragrafo">Gerar sugestão a partir dos campos acima</button>
+    </div>
+
     <div class="barra-acao-fixa">
       <div class="conteudo">
         <button class="btn btn-primary" id="btn-continuar-1">Continuar</button>
@@ -577,6 +611,17 @@ function renderEtapaImovel() {
 
   wirearCamposCondicionais();
 
+  document.getElementById('btn-sugerir-paragrafo').addEventListener('click', () => {
+    const dadosAtuais = { ...d };
+    for (const campo of CAMPOS_CONDICIONAIS_IMOVEL) {
+      const container = document.querySelector(`.campo-condicional[data-campo="${campo.flag}"]`);
+      const resposta = container.dataset.resposta;
+      dadosAtuais[campo.flag] = resposta === 'true';
+      dadosAtuais[campo.valor] = resposta === 'true' ? document.getElementById(`valor-${campo.valor}`).value.trim() : null;
+    }
+    document.getElementById('c-paragrafo').value = sugerirParagrafoImovel(dadosAtuais);
+  });
+
   document.getElementById('btn-continuar-1').addEventListener('click', () => {
     const descricao = document.getElementById('c-descricao').value.trim();
     if (!descricao) {
@@ -584,8 +629,14 @@ function renderEtapaImovel() {
       document.getElementById('c-descricao').focus();
       return;
     }
+    const paragrafo = document.getElementById('c-paragrafo').value.trim();
+    if (!paragrafo) {
+      mostrarToast('Preencha o parágrafo da Cláusula Primeira antes de continuar.', true);
+      document.getElementById('c-paragrafo').focus();
+      return;
+    }
 
-    const dados = { imovel_descricao: descricao };
+    const dados = { imovel_descricao: descricao, imovel_paragrafo: paragrafo };
     for (const campo of CAMPOS_CONDICIONAIS_IMOVEL) {
       const container = document.querySelector(`.campo-condicional[data-campo="${campo.flag}"]`);
       const resposta = container.dataset.resposta;
@@ -1182,6 +1233,13 @@ function renderEtapaVendedores() {
         </div>
       </div>
       <div class="campo">
+        <label for="v-estado-civil">Estado civil</label>
+        <select id="v-estado-civil">
+          <option value="">Selecione</option>
+          ${OPCOES_ESTADO_CIVIL.map((o) => `<option value="${o.toLowerCase()}">${o}</option>`).join('')}
+        </select>
+      </div>
+      <div class="campo">
         <label for="v-telefone">Telefone</label>
         <input id="v-telefone" inputmode="tel">
       </div>
@@ -1194,6 +1252,36 @@ function renderEtapaVendedores() {
         <div class="toggle-sim-nao" id="v-autoriza-imagem-toggle">
           <button type="button" class="toggle-opcao" data-valor="true">Sim</button>
           <button type="button" class="toggle-opcao" data-valor="false">Não</button>
+        </div>
+      </div>
+
+      <p class="wizard-etapa-sub" style="margin-top:16px;">Dados para recebimento do sinal — informe a chave PIX ou os dados bancários completos</p>
+      <div class="campo">
+        <label for="v-chave-pix">Chave PIX <span class="opcional">(ou preencha os dados bancários abaixo)</span></label>
+        <input id="v-chave-pix">
+      </div>
+      <div class="linha-2">
+        <div class="campo">
+          <label for="v-banco">Banco</label>
+          <input id="v-banco">
+        </div>
+        <div class="campo">
+          <label for="v-tipo-conta">Tipo de conta</label>
+          <select id="v-tipo-conta">
+            <option value="">Selecione</option>
+            <option value="corrente">Conta corrente</option>
+            <option value="poupanca">Conta poupança</option>
+          </select>
+        </div>
+      </div>
+      <div class="linha-2">
+        <div class="campo">
+          <label for="v-agencia">Agência</label>
+          <input id="v-agencia">
+        </div>
+        <div class="campo">
+          <label for="v-conta">Conta</label>
+          <input id="v-conta">
         </div>
       </div>
       <button class="btn btn-secondary" id="btn-add-vendedor">+ Adicionar vendedor</button>
@@ -1251,10 +1339,26 @@ function renderEtapaVendedores() {
       document.getElementById('v-endereco').focus();
       return;
     }
+    const estadoCivil = document.getElementById('v-estado-civil').value;
+    if (!estadoCivil) {
+      mostrarToast('Informe o estado civil do vendedor.', true);
+      document.getElementById('v-estado-civil').focus();
+      return;
+    }
     const respostaAutoriza = toggleAutoriza.dataset.resposta;
     if (respostaAutoriza === undefined) {
       mostrarToast('Informe se o vendedor autoriza uso de imagem (sim/não).', true);
       toggleAutoriza.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    const chavePix = document.getElementById('v-chave-pix').value.trim();
+    const banco = document.getElementById('v-banco').value.trim();
+    const agencia = document.getElementById('v-agencia').value.trim();
+    const conta = document.getElementById('v-conta').value.trim();
+    const tipoConta = document.getElementById('v-tipo-conta').value;
+    if (!chavePix && !(banco && agencia && conta && tipoConta)) {
+      mostrarToast('Informe a chave PIX ou os dados bancários completos (banco, agência, conta e tipo).', true);
+      document.getElementById('v-chave-pix').focus();
       return;
     }
 
@@ -1266,7 +1370,13 @@ function renderEtapaVendedores() {
       cpf,
       telefone,
       endereco,
+      estado_civil: estadoCivil,
       autoriza_imagem: respostaAutoriza === 'true',
+      chave_pix: chavePix || null,
+      banco: banco || null,
+      agencia: agencia || null,
+      conta: conta || null,
+      tipo_conta: tipoConta || null,
     };
 
     const btn = document.getElementById('btn-add-vendedor');
