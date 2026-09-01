@@ -123,7 +123,7 @@ router.post('/', autenticar, async (req, res) => {
                 tem_empreendimento, empreendimento, tem_cartorio_numero, cartorio_numero, imovel_paragrafo,
                 valor_total, tem_sinal, valor_sinal, tem_financiamento,
                 valor_financiado, valor_avaliacao, custo_transferencia, comissao_imobiliaria)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
              RETURNING *`,
             [corretorId, campos.imovel_descricao,
              campos.tem_lote, campos.lote, campos.tem_quadra, campos.quadra,
