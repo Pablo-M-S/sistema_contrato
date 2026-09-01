@@ -4,7 +4,7 @@ const { gerarPdfContrato } = require('../services/pdfContrato');
 
 const router = express.Router();
 
-const CAMPOS_TEXTO_OBRIGATORIOS_COMPRADOR = ['nome', 'rg', 'cpf', 'telefone', 'endereco'];
+const CAMPOS_TEXTO_OBRIGATORIOS_COMPRADOR = ['nome', 'rg', 'cpf', 'telefone', 'endereco', 'estado_civil'];
 
 // autoriza_imagem é boolean - precisa ser uma escolha explícita (true/false),
 // então não pode usar o mesmo teste de "falsy" dos campos de texto (senão
@@ -70,11 +70,17 @@ router.post('/:token', async (req, res) => {
             return res.status(400).json({ erro: 'O corretor ainda não cadastrou as 2 testemunhas deste contrato' });
         }
 
+        // assinatura_meio: 'gov_br' é só a preferência do cliente registrada
+        // desde já - a assinatura eletrônica de fato via gov.br depende da
+        // imobiliária ainda se cadastrar como instituição integradora junto
+        // ao governo (ver comentário no schema.sql).
+        const assinaturaMeio = dados.assinatura_meio === 'gov_br' ? 'gov_br' : 'manual';
+
         await pool.query(
-            `INSERT INTO compradores (contrato_id, nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, preenchido_em)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, NOW())`,
+            `INSERT INTO compradores (contrato_id, nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, estado_civil, assinatura_meio, preenchido_em)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW())`,
             [contrato.id, dados.nome, dados.nacionalidade, dados.profissao, dados.rg, dados.cpf,
-             dados.telefone, dados.endereco, dados.autoriza_imagem]
+             dados.telefone, dados.endereco, dados.autoriza_imagem, dados.estado_civil, assinaturaMeio]
         );
 
         // Nome do arquivo final = nome do cliente comprador (sanitizado)

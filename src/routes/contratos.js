@@ -19,8 +19,19 @@ const CAMPOS_CONDICIONAIS_IMOVEL = [
     { flag: 'tem_unidade', valor: 'unidade', label: 'unidade' },
     { flag: 'tem_pavimento', valor: 'pavimento', label: 'pavimento' },
     { flag: 'tem_metragem', valor: 'metragem', label: 'metragem' },
-    { flag: 'tem_prazo_obra', valor: 'prazo_obra', label: 'prazo de obra' }
+    { flag: 'tem_prazo_obra', valor: 'prazo_obra', label: 'prazo de obra' },
+    { flag: 'tem_empreendimento', valor: 'empreendimento', label: 'nome do empreendimento' },
+    { flag: 'tem_cartorio_numero', valor: 'cartorio_numero', label: 'número do cartório de registro de imóveis' }
 ];
+
+// Valida os dados bancários do vendedor (quem recebe o sinal/pagamento -
+// Cláusula Terceira). Aceita qualquer uma das duas formas: chave PIX, OU
+// banco+agência+conta+tipo de conta completos.
+function validarDadosBancarios({ banco, agencia, conta, tipo_conta, chave_pix }) {
+    if (chave_pix && chave_pix.trim()) return [];
+    if (banco && agencia && conta && tipo_conta) return [];
+    return ['Informe a chave PIX ou os dados completos da conta (banco, agência, conta e tipo) para recebimento do pagamento'];
+}
 
 // Valida os pares tem_X/valor do imóvel e devolve lista de erros (vazia se
 // tudo ok). É preciso escolher sim/não pra cada campo (não pode ficar sem
@@ -96,6 +107,9 @@ router.post('/', autenticar, async (req, res) => {
     const corretorId = req.corretor.id;
 
     const erros = [...validarCamposImovel(req.body), ...validarCamposFinanceiros(req.body)];
+    if (!req.body.imovel_paragrafo || !req.body.imovel_paragrafo.trim()) {
+        erros.push('O parágrafo da Cláusula Primeira (objeto do contrato) é obrigatório');
+    }
     if (erros.length > 0) {
         return res.status(400).json({ erro: 'Campos obrigatórios faltando', detalhes: erros });
     }
@@ -106,15 +120,18 @@ router.post('/', autenticar, async (req, res) => {
             `INSERT INTO contratos (corretor_id, imovel_descricao,
                 tem_lote, lote, tem_quadra, quadra, tem_loteamento, loteamento, tem_matricula, matricula,
                 tem_unidade, unidade, tem_pavimento, pavimento, tem_metragem, metragem, tem_prazo_obra, prazo_obra,
+                tem_empreendimento, empreendimento, tem_cartorio_numero, cartorio_numero, imovel_paragrafo,
                 valor_total, tem_sinal, valor_sinal, tem_financiamento,
                 valor_financiado, valor_avaliacao, custo_transferencia, comissao_imobiliaria)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
              RETURNING *`,
             [corretorId, campos.imovel_descricao,
              campos.tem_lote, campos.lote, campos.tem_quadra, campos.quadra,
              campos.tem_loteamento, campos.loteamento, campos.tem_matricula, campos.matricula,
              campos.tem_unidade, campos.unidade, campos.tem_pavimento, campos.pavimento,
              campos.tem_metragem, campos.metragem, campos.tem_prazo_obra, campos.prazo_obra,
+             campos.tem_empreendimento, campos.empreendimento, campos.tem_cartorio_numero, campos.cartorio_numero,
+             campos.imovel_paragrafo,
              campos.valor_total, campos.tem_sinal, campos.valor_sinal, campos.tem_financiamento || false,
              campos.valor_financiado, campos.valor_avaliacao, campos.custo_transferencia,
              campos.comissao_imobiliaria]
@@ -152,21 +169,26 @@ async function contratoPertenceAoCorretor(id, corretor) {
 // Adicionar vendedor a um contrato (pode ter mais de um)
 router.post('/:id/vendedores', autenticar, async (req, res) => {
     const { id } = req.params;
-    const { nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem } = req.body;
+    const {
+        nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, estado_civil,
+        banco, agencia, conta, tipo_conta, chave_pix,
+    } = req.body;
 
-    // RG, CPF, telefone e endereço são dados da pessoa (não variam de
-    // contrato pra contrato como os campos do imóvel) - por isso sempre
-    // obrigatórios, no mesmo padrão já exigido do comprador no formulário
-    // público. autoriza_imagem precisa ser uma escolha explícita (true ou
-    // false) - checar !autoriza_imagem trataria "não autoriza" (false) como
-    // se estivesse faltando, por isso o teste é undefined/null.
+    // RG, CPF, telefone, endereço e estado civil são dados da pessoa (não
+    // variam de contrato pra contrato como os campos do imóvel) - por isso
+    // sempre obrigatórios, no mesmo padrão já exigido do comprador no
+    // formulário público. autoriza_imagem precisa ser uma escolha explícita
+    // (true ou false) - checar !autoriza_imagem trataria "não autoriza"
+    // (false) como se estivesse faltando, por isso o teste é undefined/null.
     const faltando = [];
     if (!nome) faltando.push('nome');
     if (!cpf) faltando.push('CPF');
     if (!rg) faltando.push('RG');
     if (!telefone) faltando.push('telefone');
     if (!endereco) faltando.push('endereço');
+    if (!estado_civil) faltando.push('estado civil');
     if (autoriza_imagem === undefined || autoriza_imagem === null) faltando.push('autorização de uso de imagem (sim/não)');
+    faltando.push(...validarDadosBancarios(req.body));
     if (faltando.length > 0) {
         return res.status(400).json({ erro: `Campos obrigatórios do vendedor faltando: ${faltando.join(', ')}` });
     }
@@ -176,9 +198,11 @@ router.post('/:id/vendedores', autenticar, async (req, res) => {
 
     try {
         const { rows } = await pool.query(
-            `INSERT INTO vendedores (contrato_id, nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-            [id, nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem]
+            `INSERT INTO vendedores (contrato_id, nome, nacionalidade, profissao, rg, cpf, telefone, endereco,
+                autoriza_imagem, estado_civil, banco, agencia, conta, tipo_conta, chave_pix)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+            [id, nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, estado_civil,
+             banco || null, agencia || null, conta || null, tipo_conta || null, chave_pix || null]
         );
         res.status(201).json(rows[0]);
     } catch (err) {
@@ -419,7 +443,10 @@ router.get('/:id/pdf', autenticar, async (req, res) => {
 // o contrato do zero). Mesma validação obrigatória da criação.
 router.put('/:id/vendedores/:vendedorId', autenticar, async (req, res) => {
     const { id, vendedorId } = req.params;
-    const { nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem } = req.body;
+    const {
+        nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, estado_civil,
+        banco, agencia, conta, tipo_conta, chave_pix,
+    } = req.body;
 
     const faltando = [];
     if (!nome) faltando.push('nome');
@@ -427,7 +454,9 @@ router.put('/:id/vendedores/:vendedorId', autenticar, async (req, res) => {
     if (!rg) faltando.push('RG');
     if (!telefone) faltando.push('telefone');
     if (!endereco) faltando.push('endereço');
+    if (!estado_civil) faltando.push('estado civil');
     if (autoriza_imagem === undefined || autoriza_imagem === null) faltando.push('autorização de uso de imagem (sim/não)');
+    faltando.push(...validarDadosBancarios(req.body));
     if (faltando.length > 0) {
         return res.status(400).json({ erro: `Campos obrigatórios do vendedor faltando: ${faltando.join(', ')}` });
     }
@@ -438,9 +467,11 @@ router.put('/:id/vendedores/:vendedorId', autenticar, async (req, res) => {
     try {
         const { rows } = await pool.query(
             `UPDATE vendedores SET nome = $1, nacionalidade = $2, profissao = $3, rg = $4, cpf = $5,
-                telefone = $6, endereco = $7, autoriza_imagem = $8
-             WHERE id = $9 AND contrato_id = $10 RETURNING *`,
-            [nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, vendedorId, id]
+                telefone = $6, endereco = $7, autoriza_imagem = $8, estado_civil = $9,
+                banco = $10, agencia = $11, conta = $12, tipo_conta = $13, chave_pix = $14
+             WHERE id = $15 AND contrato_id = $16 RETURNING *`,
+            [nome, nacionalidade, profissao, rg, cpf, telefone, endereco, autoriza_imagem, estado_civil,
+             banco || null, agencia || null, conta || null, tipo_conta || null, chave_pix || null, vendedorId, id]
         );
         if (!rows[0]) {
             return res.status(404).json({ erro: 'Vendedor não encontrado' });
