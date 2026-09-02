@@ -10,6 +10,11 @@ const corretoresRoutes = require('./routes/corretores');
 const app = express();
 app.use(express.json());
 
+// Código compartilhado entre backend e frontend (validações) - servido
+// como estático pra poder ser carregado via <script> tanto no painel
+// quanto no formulário público, sem duplicar a lógica dos dois lados.
+app.use('/compartilhado', express.static(path.join(__dirname, 'compartilhado')));
+
 // Painel do corretor (login.html, index.html, css/, js/, img/) - servido
 // pelo próprio backend, igual o admin do Santa Terra Vitta. Como o painel é
 // carregado do mesmo domínio do backend, as chamadas de API não passam por
