@@ -59,21 +59,24 @@ const LABELS_STATUS = {
   cancelado: 'Cancelado',
 };
 
-// Espelha CAMPOS_CONDICIONAIS_IMOVEL do backend (src/routes/contratos.js) -
-// cada campo é um toggle "tem isso? sim/não", e o valor só é obrigatório se
-// sim. Precisa ficar igual dos dois lados, senão o backend rejeita.
-const CAMPOS_CONDICIONAIS_IMOVEL = [
-  { flag: 'tem_lote', valor: 'lote', label: 'Lote', tipo: 'texto' },
-  { flag: 'tem_quadra', valor: 'quadra', label: 'Quadra', tipo: 'texto' },
-  { flag: 'tem_loteamento', valor: 'loteamento', label: 'Loteamento', tipo: 'texto' },
-  { flag: 'tem_matricula', valor: 'matricula', label: 'Matrícula', tipo: 'texto' },
-  { flag: 'tem_unidade', valor: 'unidade', label: 'Unidade', tipo: 'texto' },
-  { flag: 'tem_pavimento', valor: 'pavimento', label: 'Pavimento', tipo: 'texto' },
-  { flag: 'tem_metragem', valor: 'metragem', label: 'Metragem (m²)', tipo: 'numero' },
-  { flag: 'tem_prazo_obra', valor: 'prazo_obra', label: 'Prazo de obra', tipo: 'texto', placeholder: 'Ex: dezembro de 2026' },
-  { flag: 'tem_empreendimento', valor: 'empreendimento', label: 'Nome do empreendimento/edifício', tipo: 'texto' },
-  { flag: 'tem_cartorio_numero', valor: 'cartorio_numero', label: 'Nº do cartório de registro de imóveis', tipo: 'texto', placeholder: 'Ex: 1' },
-];
+// UI_CAMPOS_IMOVEL: só metadado de como cada campo condicional é
+// desenhado no formulário (label bonito, tipo de input, placeholder). O
+// conjunto de campos em si (flag/valor/label de erro) vem de
+// ValidacaoContrato.CAMPOS_CONDICIONAIS_IMOVEL (src/compartilhado/), a
+// mesma fonte usada pelo backend - evita o problema de um lado ganhar um
+// campo novo e o outro ficar pra trás.
+const UI_CAMPOS_IMOVEL = {
+  tem_metragem: { tipo: 'numero', label: 'Metragem (m²)' },
+  tem_prazo_obra: { placeholder: 'Ex: dezembro de 2026' },
+  tem_empreendimento: { label: 'Nome do empreendimento/edifício' },
+  tem_cartorio_numero: { placeholder: 'Ex: 1', label: 'Nº do cartório de registro de imóveis' },
+};
+const CAMPOS_CONDICIONAIS_IMOVEL = ValidacaoContrato.CAMPOS_CONDICIONAIS_IMOVEL.map((campo) => ({
+  ...campo,
+  label: campo.label.charAt(0).toUpperCase() + campo.label.slice(1),
+  tipo: 'texto',
+  ...(UI_CAMPOS_IMOVEL[campo.flag] || {}),
+}));
 
 const OPCOES_ESTADO_CIVIL = ['Solteiro(a)', 'Casado(a)', 'Divorciado(a)', 'Viúvo(a)', 'Separado(a) judicialmente', 'União estável'];
 
@@ -1356,8 +1359,9 @@ function renderEtapaVendedores() {
     const agencia = document.getElementById('v-agencia').value.trim();
     const conta = document.getElementById('v-conta').value.trim();
     const tipoConta = document.getElementById('v-tipo-conta').value;
-    if (!chavePix && !(banco && agencia && conta && tipoConta)) {
-      mostrarToast('Informe a chave PIX ou os dados bancários completos (banco, agência, conta e tipo).', true);
+    const errosBancarios = ValidacaoContrato.validarDadosBancarios({ banco, agencia, conta, tipo_conta: tipoConta, chave_pix: chavePix });
+    if (errosBancarios.length > 0) {
+      mostrarToast(errosBancarios[0], true);
       document.getElementById('v-chave-pix').focus();
       return;
     }
