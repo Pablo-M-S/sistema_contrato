@@ -184,23 +184,12 @@ CREATE TABLE IF NOT EXISTS compradores (
     preenchido_em TIMESTAMP
 );
 
--- Migração idempotente: o banco do Railway já existe com as tabelas
--- criadas, e CREATE TABLE IF NOT EXISTS não adiciona coluna nova em tabela
--- existente. Rodar este arquivo de novo (ou só este bloco) aplica os campos
--- novos sem apagar nada.
-ALTER TABLE contratos ADD COLUMN IF NOT EXISTS tem_empreendimento BOOLEAN;
-ALTER TABLE contratos ADD COLUMN IF NOT EXISTS empreendimento VARCHAR(150);
-ALTER TABLE contratos ADD COLUMN IF NOT EXISTS tem_cartorio_numero BOOLEAN;
-ALTER TABLE contratos ADD COLUMN IF NOT EXISTS cartorio_numero VARCHAR(10);
-ALTER TABLE contratos ADD COLUMN IF NOT EXISTS imovel_paragrafo TEXT;
-ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS estado_civil VARCHAR(30);
-ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS banco VARCHAR(100);
-ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS agencia VARCHAR(20);
-ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS conta VARCHAR(30);
-ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS tipo_conta VARCHAR(20);
-ALTER TABLE vendedores ADD COLUMN IF NOT EXISTS chave_pix VARCHAR(150);
-ALTER TABLE compradores ADD COLUMN IF NOT EXISTS estado_civil VARCHAR(30);
-ALTER TABLE compradores ADD COLUMN IF NOT EXISTS assinatura_meio VARCHAR(20) DEFAULT 'manual';
+-- A partir de agora, qualquer mudança de schema (nova coluna, tabela,
+-- etc.) vira um arquivo novo em src/db/migrations/, não uma edição direta
+-- aqui. Esse schema.sql serve só pra criar um banco do zero (ambiente
+-- novo). O src/db/migrate.js roda sozinho antes do servidor subir (ver
+-- "start" no package.json) e aplica as migrations pendentes automático -
+-- não precisa mais lembrar de rodar SQL manual no Railway.
 
 CREATE TABLE IF NOT EXISTS testemunhas (
     id SERIAL PRIMARY KEY,
