@@ -55,9 +55,31 @@ test('validarCamposFinanceiros exige valor_sinal quando tem_sinal=true', () => {
     assert.ok(erros.some((e) => e.includes('sinal')));
 });
 
-test('validarCamposFinanceiros exige os 3 campos de financiamento quando marcado', () => {
+test('validarCamposFinanceiros exige os campos de financiamento quando marcado', () => {
     const erros = validarCamposFinanceiros({ valor_total: 100000, tem_sinal: false, tem_financiamento: true });
-    assert.equal(erros.length, 3);
+    // valor_financiado, valor_avaliacao, custo_transferencia, taxa_banco,
+    // custas_cartorio + a pergunta sim/não do desconto de ITBI
+    assert.equal(erros.length, 6);
+});
+
+test('validarCamposFinanceiros exige valor_entrada quando tem desconto de ITBI de primeiro imóvel', () => {
+    const erros = validarCamposFinanceiros({
+        valor_total: 100000, tem_sinal: false, tem_financiamento: true,
+        valor_financiado: 80000, valor_avaliacao: 100000, custo_transferencia: 5000,
+        taxa_banco: 5000, custas_cartorio: 1000,
+        tem_desconto_primeiro_imovel: true, // valor_entrada não informado
+    });
+    assert.ok(erros.some((e) => e.includes('entrada')));
+});
+
+test('validarCamposFinanceiros passa completo com financiamento sem desconto de ITBI', () => {
+    const erros = validarCamposFinanceiros({
+        valor_total: 100000, tem_sinal: false, tem_financiamento: true,
+        valor_financiado: 80000, valor_avaliacao: 100000, custo_transferencia: 5000,
+        taxa_banco: 5000, custas_cartorio: 1000,
+        tem_desconto_primeiro_imovel: false,
+    });
+    assert.deepEqual(erros, []);
 });
 
 test('limparCamposIrrelevantes zera valor de campo marcado como "não"', () => {
@@ -68,4 +90,23 @@ test('limparCamposIrrelevantes zera valor de campo marcado como "não"', () => {
 test('limparCamposIrrelevantes mantém valor de campo marcado como "sim"', () => {
     const limpo = limparCamposIrrelevantes({ tem_lote: true, lote: '12' });
     assert.equal(limpo.lote, '12');
+});
+
+test('limparCamposIrrelevantes zera detalhamento de financiamento quando tem_financiamento=false', () => {
+    const limpo = limparCamposIrrelevantes({
+        tem_financiamento: false, taxa_banco: 5000, custas_cartorio: 1000,
+        segundo_imovel_financiado: true, tem_desconto_primeiro_imovel: true, valor_entrada: 20000,
+    });
+    assert.equal(limpo.taxa_banco, null);
+    assert.equal(limpo.custas_cartorio, null);
+    assert.equal(limpo.segundo_imovel_financiado, null);
+    assert.equal(limpo.tem_desconto_primeiro_imovel, null);
+    assert.equal(limpo.valor_entrada, null);
+});
+
+test('limparCamposIrrelevantes zera valor_entrada quando não tem desconto de ITBI, mesmo com financiamento', () => {
+    const limpo = limparCamposIrrelevantes({
+        tem_financiamento: true, tem_desconto_primeiro_imovel: false, valor_entrada: 20000,
+    });
+    assert.equal(limpo.valor_entrada, null);
 });
