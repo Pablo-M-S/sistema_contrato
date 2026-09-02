@@ -6,7 +6,7 @@ const {
     validarCamposFinanceiros,
     limparCamposIrrelevantes,
     CAMPOS_CONDICIONAIS_IMOVEL,
-} = require('../src/routes/validacaoContrato');
+} = require('../src/compartilhado/validacaoContrato');
 
 test('validarDadosBancarios aceita só PIX', () => {
     assert.deepEqual(validarDadosBancarios({ chave_pix: '123.456.789-00' }), []);
