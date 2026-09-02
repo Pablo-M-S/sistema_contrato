@@ -1,16 +1,15 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { gerarPdfContrato } = require('../services/pdfContrato');
+const { validar: validarCamposTextoComprador } = require('../compartilhado/validacaoComprador');
 
 const router = express.Router();
-
-const CAMPOS_TEXTO_OBRIGATORIOS_COMPRADOR = ['nome', 'rg', 'cpf', 'telefone', 'endereco', 'estado_civil'];
 
 // autoriza_imagem é boolean - precisa ser uma escolha explícita (true/false),
 // então não pode usar o mesmo teste de "falsy" dos campos de texto (senão
 // "não" (false) seria confundido com "não respondeu").
 function validarComprador(dados) {
-    const faltando = CAMPOS_TEXTO_OBRIGATORIOS_COMPRADOR.filter((campo) => !dados[campo]);
+    const faltando = validarCamposTextoComprador(dados);
     if (dados.autoriza_imagem === undefined || dados.autoriza_imagem === null) {
         faltando.push('autoriza_imagem');
     }

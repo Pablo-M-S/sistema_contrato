@@ -8,7 +8,7 @@ const {
     validarCamposImovel,
     validarCamposFinanceiros,
     limparCamposIrrelevantes,
-} = require('./validacaoContrato');
+} = require('../compartilhado/validacaoContrato');
 
 const router = express.Router();
 
