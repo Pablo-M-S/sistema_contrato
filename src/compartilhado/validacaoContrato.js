@@ -88,11 +88,22 @@
                 { chave: 'valor_financiado', label: 'Valor financiado' },
                 { chave: 'valor_avaliacao', label: 'Valor de avaliação' },
                 { chave: 'custo_transferencia', label: 'Custo de transferência' },
+                { chave: 'taxa_banco', label: 'Taxa do banco' },
+                { chave: 'custas_cartorio', label: 'Custas de cartório' },
             ];
             for (const { chave, label } of CAMPOS_FINANCIAMENTO) {
                 if (campos[chave] === undefined || campos[chave] === null || campos[chave] === '') {
                     erros.push(`${label} é obrigatório quando o negócio envolve financiamento`);
                 }
+            }
+
+            // Desconto de ITBI de primeiro imóvel: mesmo padrão tem_X/valor
+            // dos campos do imóvel, só que condicionado a ter financiamento.
+            if (campos.tem_desconto_primeiro_imovel === undefined || campos.tem_desconto_primeiro_imovel === null) {
+                erros.push('Informe se o comprador tem desconto de ITBI de primeiro imóvel (sim/não)');
+            } else if (campos.tem_desconto_primeiro_imovel === true
+                && (campos.valor_entrada === undefined || campos.valor_entrada === null || campos.valor_entrada === '')) {
+                erros.push('Valor da entrada é obrigatório quando marcado como "sim" o desconto de ITBI de primeiro imóvel');
             }
         }
 
@@ -114,6 +125,13 @@
             limpo.valor_financiado = null;
             limpo.valor_avaliacao = null;
             limpo.custo_transferencia = null;
+            limpo.taxa_banco = null;
+            limpo.custas_cartorio = null;
+            limpo.segundo_imovel_financiado = null;
+            limpo.tem_desconto_primeiro_imovel = null;
+            limpo.valor_entrada = null;
+        } else if (limpo.tem_desconto_primeiro_imovel !== true) {
+            limpo.valor_entrada = null;
         }
         return limpo;
     }
