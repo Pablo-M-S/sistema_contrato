@@ -74,9 +74,24 @@ CREATE TABLE IF NOT EXISTS contratos (
     valor_financiado NUMERIC(14,2),
     valor_avaliacao NUMERIC(14,2),
     custo_transferencia NUMERIC(14,2),
+    -- Detalhamento de como custo_transferencia foi calculado (regra da
+    -- imobiliária: financiamento 0,5%/2% + ITBI + taxa do banco + custas de
+    -- cartório + FUNREJUS se >80m²). Antes o painel calculava isso na tela
+    -- mas só o resultado final ia pro banco - o detalhamento se perdia e não
+    -- dava pra conferir depois como o valor foi montado. Todos condicionais
+    -- a tem_financiamento = true, igual valor_financiado/valor_avaliacao.
+    taxa_banco NUMERIC(14,2),
+    custas_cartorio NUMERIC(14,2),
+    -- Financiamento de 2º imóvel usa taxa de 0,5% em vez de 2% na fórmula.
+    segundo_imovel_financiado BOOLEAN,
+    -- Padrão tem_X/valor: só pede valor_entrada quando o comprador tem
+    -- desconto de ITBI de primeiro imóvel (senão o ITBI usa valor_total).
+    tem_desconto_primeiro_imovel BOOLEAN,
+    valor_entrada NUMERIC(14,2),
     -- Dado interno da imobiliária, não aparece no texto do contrato - por
     -- isso continua opcional, sem travar o fluxo do corretor.
     comissao_imobiliaria NUMERIC(14,2),
+    comissao_percentual NUMERIC(5,2),
 
     -- Nome do arquivo final (nome do cliente comprador)
     nome_arquivo_pdf VARCHAR(255),
