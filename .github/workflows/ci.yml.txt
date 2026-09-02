@@ -1,0 +1,30 @@
+name: CI
+
+# Roda em todo push (qualquer branch) e em pull requests pra main - assim
+# dá pra ver o resultado antes mesmo de abrir PR, e também como checagem
+# obrigatória no PR (ver README.md, seção CI, sobre como travar o merge
+# nisso).
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Checar sintaxe de todos os arquivos .js
+        run: |
+          find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Rodar testes
+        run: npm test
