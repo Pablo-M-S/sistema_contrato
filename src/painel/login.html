@@ -27,7 +27,15 @@
 
     <div class="campo" id="campo-senha">
       <label for="senha">Senha</label>
-      <input type="password" id="senha" autocomplete="current-password" required>
+      <div class="campo-senha-wrap">
+        <input type="password" id="senha" autocomplete="current-password" required>
+        <button type="button" class="btn-olho" id="btn-olho" aria-label="Mostrar senha" tabindex="-1">
+          <svg id="icone-olho" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
       <div class="erro">Informe sua senha.</div>
     </div>
 
@@ -47,6 +55,15 @@
   const form = document.getElementById('form-login');
   const btn = document.getElementById('btn-entrar');
   const btnTexto = document.getElementById('btn-entrar-texto');
+
+  const campoSenha = document.getElementById('senha');
+  const btnOlho = document.getElementById('btn-olho');
+  btnOlho.addEventListener('click', () => {
+    const visivel = campoSenha.type === 'text';
+    campoSenha.type = visivel ? 'password' : 'text';
+    btnOlho.classList.toggle('ativo', !visivel);
+    btnOlho.setAttribute('aria-label', visivel ? 'Mostrar senha' : 'Ocultar senha');
+  });
 
   function mostrarToast(msg, erro) {
     const t = document.getElementById('toast');
